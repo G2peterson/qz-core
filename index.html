@@ -2,47 +2,55 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>QZ Core Engine — Live Cycle Test</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<header>
-  <h1>QZ<span>·</span>Core Engine</h1>
-  <p class="tagline">Live mic in → detect the rhythm → time anti-noise to the next cycle</p>
-</header>
+<div class="panel">
 
-<main>
-  <button class="util wide" id="startBtn">Start listening</button>
+  <header>
+    <h1>QZ<span>·</span>Core</h1>
+    <button class="info-btn" id="infoBtn" aria-label="How this works">i</button>
+  </header>
+
+  <button class="start-btn" id="startBtn">Start listening</button>
 
   <div class="readout">
     <div class="stat">
-      <span class="label">Detected period</span>
       <span class="value" id="periodVal">—</span>
+      <span class="label">Detected period</span>
     </div>
     <div class="stat">
-      <span class="label">Cycles locked</span>
       <span class="value" id="lockVal">0</span>
+      <span class="label">Cycles locked</span>
     </div>
     <div class="stat">
-      <span class="label">Anti-noise fired</span>
       <span class="value" id="fireVal">0</span>
+      <span class="label">Anti-noise fired</span>
     </div>
   </div>
 
-  <canvas id="scope" width="600" height="160"></canvas>
+  <canvas id="scope" width="600" height="400"></canvas>
 
-  <p class="note">
-    This proves timing, not true sample-level phase cancellation —
-    browser audio has real round-trip latency (typically 100ms+), so
-    this can't react instantly to a single sound. What it does: once
-    a sound repeats a few times, it locks onto the rhythm and fires
-    an anti-noise burst aimed at when the <em>next</em> cycle should
-    land — the same logic the FxLMS simulation validated on paper,
-    now running on live audio.
-  </p>
-</main>
+</div>
+
+<div class="sheet" id="infoSheet">
+  <div class="sheet-inner">
+    <button class="sheet-close" id="infoClose" aria-label="Close">✕</button>
+    <h2>How this works</h2>
+    <p>
+      This proves timing, not true sample-level phase cancellation —
+      browser audio has real round-trip latency (typically 100ms+), so
+      this can't react instantly to a single sound. What it does: once
+      a sound repeats a few times, it locks onto the rhythm and fires
+      an anti-noise burst aimed at when the <em>next</em> cycle should
+      land — the same logic the FxLMS simulation validated on paper,
+      now running on live audio.
+    </p>
+  </div>
+</div>
 
 <script src="script.js"></script>
 </body>
