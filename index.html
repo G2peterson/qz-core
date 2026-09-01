@@ -1,58 +1,123 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>QZ Core Engine — Live Cycle Test</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+  >
+
+  <title>QZ Core Engine</title>
+
+  <!-- QZ CSS -->
+  <link rel="stylesheet" href="./style.css">
 </head>
+
 <body>
 
-<div class="panel">
+  <main class="panel">
 
-  <header>
-    <h1>QZ<span>·</span>Core</h1>
-    <button class="info-btn" id="infoBtn" aria-label="How this works">i</button>
-  </header>
+    <header>
+      <h1>QZ<span>·</span>Core</h1>
 
-  <button class="start-btn" id="startBtn">Start listening</button>
+      <button
+        class="info-btn"
+        id="infoBtn"
+        type="button"
+        aria-label="How this works"
+      >
+        i
+      </button>
+    </header>
 
-  <div class="readout">
-    <div class="stat">
-      <span class="value" id="periodVal">—</span>
-      <span class="label">Detected period</span>
+
+    <!-- PRIMARY CONTROL -->
+    <button
+      class="start-btn"
+      id="startBtn"
+      type="button"
+    >
+      Start listening
+    </button>
+
+
+    <!-- LIVE STATUS -->
+    <section class="readout" aria-label="QZ status">
+
+      <div class="stat">
+        <span class="value" id="periodVal">—</span>
+        <span class="label">Detected period</span>
+      </div>
+
+      <div class="stat">
+        <span class="value" id="lockVal">0</span>
+        <span class="label">Cycles locked</span>
+      </div>
+
+      <div class="stat">
+        <span class="value" id="fireVal">0</span>
+        <span class="label">Anti-noise fired</span>
+      </div>
+
+    </section>
+
+
+    <!-- LIVE AUDIO DISPLAY -->
+    <canvas
+      id="scope"
+      width="600"
+      height="400"
+      aria-label="Live QZ audio display"
+    ></canvas>
+
+  </main>
+
+
+  <!-- INFORMATION SHEET -->
+  <div
+    class="sheet"
+    id="infoSheet"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="infoTitle"
+  >
+
+    <div class="sheet-inner">
+
+      <button
+        class="sheet-close"
+        id="infoClose"
+        type="button"
+        aria-label="Close"
+      >
+        ✕
+      </button>
+
+      <h2 id="infoTitle">How this works</h2>
+
+      <p>
+        This proves timing, not true sample-level phase cancellation.
+        Browser audio has real round-trip latency, typically 100ms or
+        more, so this test cannot react instantly to a single sound.
+
+        Once a sound repeats several times, QZ detects the rhythm,
+        predicts when the next cycle should occur, and schedules an
+        anti-noise burst for that predicted moment.
+
+        This brings the timing logic previously tested with the FxLMS
+        simulation into a live-audio test.
+      </p>
+
     </div>
-    <div class="stat">
-      <span class="value" id="lockVal">0</span>
-      <span class="label">Cycles locked</span>
-    </div>
-    <div class="stat">
-      <span class="value" id="fireVal">0</span>
-      <span class="label">Anti-noise fired</span>
-    </div>
+
   </div>
 
-  <canvas id="scope" width="600" height="400"></canvas>
 
-</div>
+  <!-- QZ JAVASCRIPT -->
+  <script src="./script.js"></script>
 
-<div class="sheet" id="infoSheet">
-  <div class="sheet-inner">
-    <button class="sheet-close" id="infoClose" aria-label="Close">✕</button>
-    <h2>How this works</h2>
-    <p>
-      This proves timing, not true sample-level phase cancellation —
-      browser audio has real round-trip latency (typically 100ms+), so
-      this can't react instantly to a single sound. What it does: once
-      a sound repeats a few times, it locks onto the rhythm and fires
-      an anti-noise burst aimed at when the <em>next</em> cycle should
-      land — the same logic the FxLMS simulation validated on paper,
-      now running on live audio.
-    </p>
-  </div>
-</div>
-
-<script src="script.js"></script>
 </body>
-</html>
 
+</html>
