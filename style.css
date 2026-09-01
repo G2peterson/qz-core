@@ -1,174 +1,346 @@
-/*
-  QZ Core Engine — live cycle-detection + timed anti-noise test
-  ----------------------------------------------------------------
-  What this actually does:
-    1. Captures live mic input.
-    2. Watches the amplitude envelope for "onsets" - moments the
-       sound crosses from quiet to loud (the start of a snore burst,
-       a bark, a repeating knock, etc).
-    3. Once it has a few onsets, estimates the period between them
-       (how often the sound repeats).
-    4. Schedules a short anti-noise burst timed to land at the NEXT
-       predicted onset - using the Web Audio clock (audioContext.
-       currentTime), which is sample-accurate for scheduling even
-       though the mic->decision->speaker round trip has real latency.
-
-  What this is NOT: true sample-by-sample phase cancellation. That
-  needs latency low enough to react within a single wave cycle,
-  which browser audio can't guarantee. This proves the "detect the
-  rhythm, time to the next cycle" logic on live audio instead - the
-  same principle the FxLMS simulation validated on paper.
-*/
-
-const infoBtn = document.getElementById('infoBtn');
-const infoClose = document.getElementById('infoClose');
-const infoSheet = document.getElementById('infoSheet');
-infoBtn.addEventListener('click', () => infoSheet.classList.add('open'));
-infoClose.addEventListener('click', () => infoSheet.classList.remove('open'));
-infoSheet.addEventListener('click', (e) => { if (e.target === infoSheet) infoSheet.classList.remove('open'); });
-
-const startBtn = document.getElementById('startBtn');
-const periodVal = document.getElementById('periodVal');
-const lockVal = document.getElementById('lockVal');
-const fireVal = document.getElementById('fireVal');
-const canvas = document.getElementById('scope');
-const ctx = canvas.getContext('2d');
-
-let audioCtx = null;
-let analyser = null;
-let dataArray = null;
-let running = false;
-
-let onsetTimes = []; // audioCtx.currentTime of each detected onset
-let lockedPeriod = null; // seconds, once we have a stable estimate
-let cyclesLocked = 0;
-let firesCount = 0;
-let aboveThreshold = false;
-let lastOnsetTime = -Infinity;
-const ONSET_MIN_GAP = 0.25; // seconds - ignore re-triggers faster than this (avoids one burst counting as many onsets)
-const THRESHOLD = 0.12; // amplitude (0-1 scale) above which we call it "sound happening"
-
-startBtn.addEventListener('click', async () => {
-  if (running) return;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = audioCtx.createMediaStreamSource(stream);
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 2048;
-    dataArray = new Uint8Array(analyser.fftSize);
-    source.connect(analyser);
-
-    running = true;
-    startBtn.textContent = 'Listening…';
-    startBtn.classList.add('listening'); // matches .start-btn.listening in new CSS
-    requestAnimationFrame(loop);
-  } catch (err) {
-    console.error('Mic access failed', err);
-    alert('Couldn\'t access the microphone. Check permissions and try again.');
-  }
-});
-
-function loop() {
-  if (!running) return;
-  analyser.getByteTimeDomainData(dataArray);
-
-  // Simple RMS amplitude for this frame, normalized 0-1
-  let sumSquares = 0;
-  for (let i = 0; i < dataArray.length; i++) {
-    const v = (dataArray[i] - 128) / 128;
-    sumSquares += v * v;
-  }
-  const rms = Math.sqrt(sumSquares / dataArray.length);
-
-  const now = audioCtx.currentTime;
-
-  // Onset detection: rising edge across the threshold, with a
-  // minimum gap so one loud burst doesn't register as several onsets.
-  if (rms > THRESHOLD && !aboveThreshold && (now - lastOnsetTime) > ONSET_MIN_GAP) {
-    aboveThreshold = true;
-    lastOnsetTime = now;
-    registerOnset(now);
-  } else if (rms < THRESHOLD * 0.6) {
-    aboveThreshold = false; // reset once it's clearly quiet again
-  }
-
-  drawScope(rms);
-  requestAnimationFrame(loop);
+:root {
+  --bg: #08111f;
+  --panel: #111c30;
+  --border: #263653;
+  --text: #f2f6ff;
+  --dim: #9aa8c0;
+  --blue: #4fb0ff;
+  --green: #46d39a;
+  --red: #ff5d5d;
 }
 
-function registerOnset(t) {
-  onsetTimes.push(t);
-  if (onsetTimes.length > 8) onsetTimes.shift(); // keep a rolling window
 
-  if (onsetTimes.length >= 3) {
-    // Estimate period as the average gap between recent onsets.
-    const gaps = [];
-    for (let i = 1; i < onsetTimes.length; i++) {
-      gaps.push(onsetTimes[i] - onsetTimes[i - 1]);
-    }
-    const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+/* =========================
+   RESET
+   ========================= */
 
-    // Only call it "locked" if recent gaps are reasonably consistent -
-    // a real rhythm, not random noise bursts.
-    const variance = gaps.reduce((sum, g) => sum + Math.pow(g - avgGap, 2), 0) / gaps.length;
-    const stdDev = Math.sqrt(variance);
-    const isStable = stdDev < avgGap * 0.35; // within ~35% of average - loose but workable for a first pass
-
-    if (isStable && avgGap > 0.15 && avgGap < 3.0) {
-      lockedPeriod = avgGap;
-      cyclesLocked++;
-      lockVal.textContent = cyclesLocked;
-      periodVal.textContent = lockedPeriod.toFixed(2) + 's';
-      scheduleAntiNoise(t + lockedPeriod);
-    } else {
-      periodVal.textContent = 'locking…';
-    }
-  }
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
-function scheduleAntiNoise(targetTime) {
-  // Short burst of noise as a stand-in "anti-noise" pulse - in a
-  // real system this would be phase-inverted and amplitude-matched
-  // to the actual captured waveform, not generic noise. This proves
-  // the SCHEDULING is landing on time, which is the part being
-  // tested here.
-  const bufferSize = audioCtx.sampleRate * 0.08; // 80ms burst
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    // Fade in/out so it doesn't click - a raw on/off noise burst is jarring
-    const env = Math.sin((Math.PI * i) / bufferSize);
-    data[i] = (Math.random() * 2 - 1) * env * 0.5;
-  }
-  const src = audioCtx.createBufferSource();
-  src.buffer = buffer;
-  src.connect(audioCtx.destination);
-
-  const delay = targetTime - audioCtx.currentTime;
-  if (delay > 0) {
-    src.start(targetTime);
-    firesCount++;
-    fireVal.textContent = firesCount;
-  }
-  // If delay <= 0, the predicted time already passed (detection ran
-  // behind) - skip firing rather than play late, which would be
-  // worse than not playing at all.
+html {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
 }
 
-function drawScope(rms) {
-  const w = canvas.width, h = canvas.height;
-  // Scroll the existing image left by 2px, draw new column on the right -
-  // cheap way to get a moving waveform strip without keeping a big buffer.
-  const img = ctx.getImageData(2, 0, w - 2, h);
-  ctx.clearRect(0, 0, w, h);
-  ctx.putImageData(img, 0, 0);
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
 
-  ctx.fillStyle = '#0b1220';
-  ctx.fillRect(w - 2, 0, 2, h);
+  background: var(--bg);
+  color: var(--text);
 
-  const barHeight = Math.min(rms * 4, 1) * h;
-  ctx.fillStyle = aboveThreshold ? '#ff5d5d' : '#4fb0ff';
-  ctx.fillRect(w - 2, h - barHeight, 2, barHeight);
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Arial,
+    sans-serif;
 }
 
+
+/* =========================
+   MAIN PHONE SCREEN
+   ========================= */
+
+.panel {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+
+  padding:
+    18px
+    16px
+    calc(18px + env(safe-area-inset-bottom));
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 16px;
+
+  background:
+    radial-gradient(
+      ellipse at top,
+      #13213a 0%,
+      var(--bg) 65%
+    );
+}
+
+
+/* =========================
+   HEADER
+   ========================= */
+
+header {
+  width: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+h1 {
+  margin: 0;
+
+  font-size: 30px;
+  line-height: 1;
+
+  font-weight: 750;
+  letter-spacing: -0.5px;
+}
+
+h1 span {
+  color: var(--blue);
+}
+
+
+/* INFO BUTTON */
+
+.info-btn {
+  width: 48px;
+  height: 48px;
+
+  padding: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 2px solid var(--border);
+  border-radius: 50%;
+
+  background: var(--panel);
+  color: var(--text);
+
+  font-size: 22px;
+  font-weight: 700;
+
+  cursor: pointer;
+}
+
+
+/* =========================
+   START LISTENING BUTTON
+   ========================= */
+
+.start-btn {
+  width: 100%;
+  min-height: 72px;
+
+  padding: 12px 16px;
+
+  border: 2px solid var(--blue);
+  border-radius: 18px;
+
+  background: var(--panel);
+  color: var(--text);
+
+  font-size: 24px;
+  font-weight: 750;
+
+  cursor: pointer;
+}
+
+.start-btn:active {
+  transform: scale(0.98);
+}
+
+.start-btn.listening {
+  border-color: var(--green);
+  background: #10271f;
+  color: var(--green);
+}
+
+
+/* =========================
+   STATUS READOUT
+   ========================= */
+
+.readout {
+  width: 100%;
+
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+
+  gap: 8px;
+
+  padding: 14px 8px;
+
+  background: var(--panel);
+
+  border: 1px solid var(--border);
+  border-radius: 18px;
+}
+
+.stat {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  align-items: center;
+  justify-content: center;
+
+  text-align: center;
+
+  gap: 8px;
+}
+
+.stat .value {
+  font-size: 32px;
+  line-height: 1;
+
+  font-weight: 800;
+
+  font-variant-numeric: tabular-nums;
+}
+
+.stat .label {
+  color: var(--dim);
+
+  font-size: 12px;
+  line-height: 1.2;
+
+  font-weight: 650;
+
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+
+/* =========================
+   LIVE SCOPE
+   ========================= */
+
+#scope {
+  width: 100%;
+
+  flex: 1 1 auto;
+
+  min-height: 240px;
+
+  display: block;
+
+  background: var(--panel);
+
+  border: 1px solid var(--border);
+  border-radius: 18px;
+}
+
+
+/* =========================
+   INFORMATION OVERLAY
+   ========================= */
+
+.sheet {
+  position: fixed;
+
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+
+  z-index: 1000;
+
+  display: none;
+
+  align-items: flex-end;
+
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.sheet.open {
+  display: flex;
+}
+
+.sheet-inner {
+  position: relative;
+
+  width: 100%;
+  max-height: 75vh;
+
+  padding:
+    24px
+    22px
+    calc(30px + env(safe-area-inset-bottom));
+
+  overflow-y: auto;
+
+  background: var(--panel);
+
+  border-top: 1px solid var(--border);
+
+  border-radius: 24px 24px 0 0;
+}
+
+.sheet-inner h2 {
+  margin: 0 50px 16px 0;
+
+  font-size: 26px;
+  line-height: 1.15;
+}
+
+.sheet-inner p {
+  margin: 0;
+
+  color: var(--dim);
+
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+.sheet-inner em {
+  color: var(--blue);
+  font-style: normal;
+}
+
+
+/* CLOSE BUTTON */
+
+.sheet-close {
+  position: absolute;
+
+  top: 16px;
+  right: 16px;
+
+  width: 44px;
+  height: 44px;
+
+  padding: 0;
+
+  border: 1px solid var(--border);
+  border-radius: 50%;
+
+  background: #0b1424;
+  color: var(--text);
+
+  font-size: 20px;
+
+  cursor: pointer;
+}
+
+
+/* =========================
+   DESKTOP / TABLET
+   ========================= */
+
+@media (min-width: 600px) {
+
+  body {
+    display: flex;
+    justify-content: center;
+  }
+
+  .panel {
+    max-width: 520px;
+  }
+
+}
