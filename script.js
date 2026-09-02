@@ -1,17 +1,20 @@
 /*
-  QZ Core Engine
-  Live cycle detection + timed anti-noise test
+  Quiet Zone TNC
+  Directional Targeting Prototype
 
-  This is a browser proof-of-concept.
+  PURPOSE:
+  Detect a deliberate phone push toward an unwanted
+  sound source.
 
-  It:
-  1. Listens through the phone microphone.
-  2. Detects repeating sound onsets.
-  3. Estimates the repetition period.
-  4. Predicts the next onset.
-  5. Fires a short test burst at the predicted time.
+  USER ACTION:
+  1. Point top edge / arrow toward noise.
+  2. Touch and hold arrow.
+  3. Push phone toward noise.
+  4. QZ detects sufficient forward motion.
+  5. Phone vibrates: GOT IT.
 
-  This is NOT yet true real-time ANC.
+  This version proves the targeting gesture.
+  It does NOT yet perform TNC.
 */
 
 
@@ -19,22 +22,129 @@
    PAGE ELEMENTS
    ========================================================= */
 
-const infoBtn = document.getElementById("infoBtn");
-const infoClose = document.getElementById("infoClose");
-const infoSheet = document.getElementById("infoSheet");
+const infoBtn =
+  document.getElementById("infoBtn");
 
-const startBtn = document.getElementById("startBtn");
+const infoClose =
+  document.getElementById("infoClose");
 
-const periodVal = document.getElementById("periodVal");
-const lockVal = document.getElementById("lockVal");
-const fireVal = document.getElementById("fireVal");
+const infoSheet =
+  document.getElementById("infoSheet");
 
-const canvas = document.getElementById("scope");
-const ctx = canvas.getContext("2d");
+const arrowBtn =
+  document.getElementById("arrowBtn");
+
+const arrowStatus =
+  document.getElementById("arrowStatus");
+
+const motionVal =
+  document.getElementById("motionVal");
+
+const directionVal =
+  document.getElementById("directionVal");
+
+const confidenceVal =
+  document.getElementById("confidenceVal");
+
+const tareBtn =
+  document.getElementById("tareBtn");
+
+const diagnosticsBtn =
+  document.getElementById("diagnosticsBtn");
+
+const diagnostics =
+  document.getElementById("diagnostics");
+
+const xVal =
+  document.getElementById("xVal");
+
+const yVal =
+  document.getElementById("yVal");
+
+const zVal =
+  document.getElementById("zVal");
+
+const peakVal =
+  document.getElementById("peakVal");
+
+const gestureVal =
+  document.getElementById("gestureVal");
+
+const sensorVal =
+  document.getElementById("sensorVal");
 
 
 /* =========================================================
-   INFO SHEET
+   STATE
+   ========================================================= */
+
+let sensorActive = false;
+
+let gestureActive = false;
+
+let acquired = false;
+
+let gestureStart = 0;
+
+let peakAcceleration = 0;
+
+let forwardEnergy = 0;
+
+let sidewaysEnergy = 0;
+
+let sampleCount = 0;
+
+
+/*
+  Phone coordinates when screen is facing upward:
+
+  X = left / right
+  Y = top / bottom
+  Z = through screen
+
+  A deliberate push toward the TOP edge of the phone
+  should primarily appear on the Y axis.
+
+  Different browsers / devices can reverse sign,
+  so Prototype One initially measures axis dominance
+  rather than trusting one fixed sign.
+*/
+
+
+/* =========================================================
+   TUNING
+   ========================================================= */
+
+/*
+  Minimum useful horizontal acceleration.
+
+  This will almost certainly need tuning on Gary's
+  actual phone after the first physical test.
+*/
+
+const MIN_ACCELERATION = 0.35;
+
+
+/*
+  Number of meaningful motion samples required before
+  QZ is willing to say GOT IT.
+*/
+
+const MIN_SAMPLES = 4;
+
+
+/*
+  Forward-axis motion must dominate sideways motion.
+
+  1.5 means Y energy needs to be about 50% stronger
+  than X energy.
+*/
+
+const DIRECTION_RATIO = 1.5;
+
+
+/* =========================================================
+   INFO
    ========================================================= */
 
 infoBtn.addEventListener("click", () => {
@@ -46,580 +156,529 @@ infoClose.addEventListener("click", () => {
 });
 
 infoSheet.addEventListener("click", (event) => {
+
   if (event.target === infoSheet) {
     infoSheet.classList.remove("open");
   }
+
 });
 
 
 /* =========================================================
-   AUDIO STATE
+   DIAGNOSTICS
    ========================================================= */
 
-let audioCtx = null;
-let analyser = null;
-let dataArray = null;
-let microphoneStream = null;
+diagnosticsBtn.addEventListener("click", () => {
 
-let running = false;
+  diagnostics.classList.toggle("open");
 
-let onsetTimes = [];
-
-let lockedPeriod = null;
-
-let cyclesLocked = 0;
-let firesCount = 0;
-
-let aboveThreshold = false;
-let lastOnsetTime = -Infinity;
+});
 
 
 /* =========================================================
-   DETECTION SETTINGS
+   SENSOR PERMISSION
    ========================================================= */
 
-// Ignore repeated triggers occurring too close together.
-const ONSET_MIN_GAP = 0.25;
+async function enableMotionSensors() {
 
-// RMS amplitude required to count as a sound onset.
-const THRESHOLD = 0.12;
-
-// Number of onset timestamps retained.
-const MAX_ONSETS = 8;
-
-
-/* =========================================================
-   START LISTENING
-   ========================================================= */
-
-startBtn.addEventListener("click", async () => {
-
-  if (running) {
-    return;
+  if (sensorActive) {
+    return true;
   }
+
+
+  /*
+    iOS requires motion permission to be requested
+    from a direct user gesture.
+
+    Android usually does not require this step.
+  */
 
   try {
 
-    microphoneStream =
-      await navigator.mediaDevices.getUserMedia({
-        audio: true
-      });
+    if (
+      typeof DeviceMotionEvent !== "undefined" &&
+      typeof DeviceMotionEvent.requestPermission === "function"
+    ) {
 
-    audioCtx =
-      new (window.AudioContext || window.webkitAudioContext)();
+      const permission =
+        await DeviceMotionEvent.requestPermission();
 
-    if (audioCtx.state === "suspended") {
-      await audioCtx.resume();
+      if (permission !== "granted") {
+
+        sensorVal.textContent = "denied";
+
+        arrowStatus.textContent =
+          "Motion permission denied";
+
+        return false;
+      }
     }
 
-    const source =
-      audioCtx.createMediaStreamSource(microphoneStream);
 
-    analyser = audioCtx.createAnalyser();
+    if (
+      typeof DeviceMotionEvent === "undefined"
+    ) {
 
-    analyser.fftSize = 2048;
+      sensorVal.textContent = "unavailable";
 
-    dataArray =
-      new Uint8Array(analyser.fftSize);
+      arrowStatus.textContent =
+        "Motion sensor unavailable";
 
-    source.connect(analyser);
-
-
-    /* RESET TEST */
-
-    onsetTimes = [];
-
-    lockedPeriod = null;
-
-    cyclesLocked = 0;
-    firesCount = 0;
-
-    aboveThreshold = false;
-    lastOnsetTime = -Infinity;
-
-    periodVal.textContent = "—";
-    lockVal.textContent = "0";
-    fireVal.textContent = "0";
+      return false;
+    }
 
 
-    /* START */
+    window.addEventListener(
+      "devicemotion",
+      handleMotion,
+      { passive: true }
+    );
 
-    running = true;
+    sensorActive = true;
 
-    startBtn.textContent = "Listening…";
-    startBtn.classList.add("listening");
+    sensorVal.textContent = "ready";
 
-    resizeCanvas();
-
-    requestAnimationFrame(loop);
+    return true;
 
   } catch (error) {
 
     console.error(
-      "QZ microphone access failed:",
+      "QZ motion sensor error:",
       error
     );
 
-    alert(
-      "QZ couldn't access the microphone. " +
-      "Check microphone permission and try again."
-    );
+    sensorVal.textContent = "error";
+
+    arrowStatus.textContent =
+      "Motion sensor error";
+
+    return false;
   }
+
+}
+
+
+/* =========================================================
+   START TARGETING GESTURE
+   ========================================================= */
+
+async function startGesture(event) {
+
+  event.preventDefault();
+
+  const ready =
+    await enableMotionSensors();
+
+  if (!ready) {
+    return;
+  }
+
+
+  resetGestureData();
+
+  gestureActive = true;
+
+  acquired = false;
+
+  gestureStart =
+    performance.now();
+
+  arrowBtn.classList.add("armed");
+
+  arrowBtn.classList.remove("acquired");
+
+  motionVal.textContent = "MOVE";
+
+  directionVal.textContent = "↑";
+
+  confidenceVal.textContent = "0%";
+
+  arrowStatus.textContent =
+    "Push phone toward noise";
+
+}
+
+
+/* =========================================================
+   END TARGETING GESTURE
+   ========================================================= */
+
+function endGesture(event) {
+
+  if (event) {
+    event.preventDefault();
+  }
+
+  if (!gestureActive) {
+    return;
+  }
+
+  gestureActive = false;
+
+  arrowBtn.classList.remove("armed");
+
+
+  if (!acquired) {
+
+    motionVal.textContent = "TRY";
+
+    arrowStatus.textContent =
+      "Not enough direction — try again";
+
+  }
+
+}
+
+
+/* =========================================================
+   POINTER EVENTS
+   ========================================================= */
+
+arrowBtn.addEventListener(
+  "pointerdown",
+  startGesture
+);
+
+arrowBtn.addEventListener(
+  "pointerup",
+  endGesture
+);
+
+arrowBtn.addEventListener(
+  "pointercancel",
+  endGesture
+);
+
+arrowBtn.addEventListener(
+  "pointerleave",
+  (event) => {
+
+    if (
+      event.buttons === 0
+    ) {
+
+      endGesture(event);
+
+    }
+
+  }
+);
+
+
+/* =========================================================
+   MOTION DATA
+   ========================================================= */
+
+function handleMotion(event) {
+
+  const acceleration =
+    event.acceleration ||
+    event.accelerationIncludingGravity;
+
+  if (!acceleration) {
+    return;
+  }
+
+
+  const x =
+    Number(acceleration.x) || 0;
+
+  const y =
+    Number(acceleration.y) || 0;
+
+  const z =
+    Number(acceleration.z) || 0;
+
+
+  /* LIVE DIAGNOSTICS */
+
+  xVal.textContent =
+    x.toFixed(2);
+
+  yVal.textContent =
+    y.toFixed(2);
+
+  zVal.textContent =
+    z.toFixed(2);
+
+
+  if (!gestureActive || acquired) {
+    return;
+  }
+
+
+  const elapsed =
+    performance.now() -
+    gestureStart;
+
+  gestureVal.textContent =
+    Math.round(elapsed) + " ms";
+
+
+  const absX =
+    Math.abs(x);
+
+  const absY =
+    Math.abs(y);
+
+
+  /*
+    Ignore tiny movements and sensor noise.
+  */
+
+  const horizontalMagnitude =
+    Math.sqrt(
+      (x * x) +
+      (y * y)
+    );
+
+
+  if (
+    horizontalMagnitude <
+    MIN_ACCELERATION
+  ) {
+
+    return;
+  }
+
+
+  sampleCount++;
+
+
+  /*
+    We currently treat the phone's Y axis as the
+    forward/back axis because the arrow points toward
+    the physical top edge of the phone.
+  */
+
+  forwardEnergy += absY;
+
+  sidewaysEnergy += absX;
+
+
+  if (
+    horizontalMagnitude >
+    peakAcceleration
+  ) {
+
+    peakAcceleration =
+      horizontalMagnitude;
+
+    peakVal.textContent =
+      peakAcceleration.toFixed(2);
+
+  }
+
+
+  evaluateDirection();
+
+}
+
+
+/* =========================================================
+   DIRECTION CONFIDENCE
+   ========================================================= */
+
+function evaluateDirection() {
+
+  if (sampleCount === 0) {
+    return;
+  }
+
+
+  const totalEnergy =
+    forwardEnergy +
+    sidewaysEnergy;
+
+
+  if (totalEnergy <= 0) {
+    return;
+  }
+
+
+  /*
+    Confidence represents how strongly the gesture
+    favors the phone's forward/back axis instead of
+    left/right motion.
+  */
+
+  const axisConfidence =
+    forwardEnergy /
+    totalEnergy;
+
+
+  const confidence =
+    Math.round(
+      axisConfidence * 100
+    );
+
+
+  confidenceVal.textContent =
+    confidence + "%";
+
+
+  const directional =
+    forwardEnergy >
+    sidewaysEnergy *
+    DIRECTION_RATIO;
+
+
+  if (
+    directional &&
+    sampleCount >= MIN_SAMPLES
+  ) {
+
+    acquireDirection();
+
+  }
+
+}
+
+
+/* =========================================================
+   TARGET ACQUIRED
+   ========================================================= */
+
+function acquireDirection() {
+
+  if (acquired) {
+    return;
+  }
+
+
+  acquired = true;
+
+  gestureActive = false;
+
+
+  arrowBtn.classList.remove("armed");
+
+  arrowBtn.classList.add("acquired");
+
+
+  motionVal.textContent =
+    "LOCK";
+
+  directionVal.textContent =
+    "↑";
+
+  confidenceVal.textContent =
+    "100%";
+
+  arrowStatus.textContent =
+    "GOT IT";
+
+
+  /*
+    HAPTIC CONFIRMATION
+
+    Android browsers generally support navigator.vibrate.
+    Devices/browsers without vibration simply ignore it.
+  */
+
+  if ("vibrate" in navigator) {
+
+    navigator.vibrate(
+      [80, 50, 140]
+    );
+
+  }
+
+
+  console.log(
+    "QZ TARGET ACQUIRED",
+    {
+      timestamp:
+        new Date().toISOString(),
+
+      forwardEnergy,
+      sidewaysEnergy,
+      sampleCount,
+      peakAcceleration,
+
+      gestureMilliseconds:
+        Math.round(
+          performance.now() -
+          gestureStart
+        )
+    }
+  );
+
+}
+
+
+/* =========================================================
+   RESET / TARE
+   ========================================================= */
+
+tareBtn.addEventListener("click", () => {
+
+  resetGestureData();
+
+  gestureActive = false;
+
+  acquired = false;
+
+
+  arrowBtn.classList.remove(
+    "armed",
+    "acquired"
+  );
+
+
+  motionVal.textContent =
+    "WAIT";
+
+  directionVal.textContent =
+    "—";
+
+  confidenceVal.textContent =
+    "0%";
+
+  arrowStatus.textContent =
+    "Touch arrow to begin";
+
+
+  gestureVal.textContent =
+    "0 ms";
+
+  peakVal.textContent =
+    "0.00";
+
 });
 
 
-/* =========================================================
-   MAIN AUDIO LOOP
-   ========================================================= */
+function resetGestureData() {
 
-function loop() {
+  peakAcceleration = 0;
 
-  if (!running || !analyser) {
-    return;
-  }
+  forwardEnergy = 0;
 
-  analyser.getByteTimeDomainData(dataArray);
+  sidewaysEnergy = 0;
 
+  sampleCount = 0;
 
-  /* CALCULATE RMS AMPLITUDE */
-
-  let sumSquares = 0;
-
-  for (
-    let i = 0;
-    i < dataArray.length;
-    i++
-  ) {
-
-    const sample =
-      (dataArray[i] - 128) / 128;
-
-    sumSquares +=
-      sample * sample;
-  }
-
-  const rms =
-    Math.sqrt(
-      sumSquares / dataArray.length
-    );
-
-
-  const now =
-    audioCtx.currentTime;
-
-
-  /* =====================================================
-     ONSET DETECTION
-     ===================================================== */
-
-  if (
-    rms > THRESHOLD &&
-    !aboveThreshold &&
-    (now - lastOnsetTime) > ONSET_MIN_GAP
-  ) {
-
-    aboveThreshold = true;
-
-    lastOnsetTime = now;
-
-    registerOnset(now);
-
-  } else if (
-    rms < THRESHOLD * 0.6
-  ) {
-
-    aboveThreshold = false;
-  }
-
-
-  drawScope(rms);
-
-  requestAnimationFrame(loop);
 }
 
 
 /* =========================================================
-   REGISTER SOUND ONSET
+   INITIAL SENSOR CHECK
    ========================================================= */
 
-function registerOnset(time) {
-
-  onsetTimes.push(time);
-
-
-  /* KEEP ROLLING HISTORY */
+window.addEventListener("load", () => {
 
   if (
-    onsetTimes.length > MAX_ONSETS
+    typeof DeviceMotionEvent === "undefined"
   ) {
 
-    onsetTimes.shift();
-  }
-
-
-  /* NEED AT LEAST THREE EVENTS */
-
-  if (
-    onsetTimes.length < 3
-  ) {
-
-    periodVal.textContent = "learning…";
-
-    return;
-  }
-
-
-  /* CALCULATE GAPS */
-
-  const gaps = [];
-
-  for (
-    let i = 1;
-    i < onsetTimes.length;
-    i++
-  ) {
-
-    gaps.push(
-      onsetTimes[i] -
-      onsetTimes[i - 1]
-    );
-  }
-
-
-  /* AVERAGE PERIOD */
-
-  const averageGap =
-    gaps.reduce(
-      (total, gap) =>
-        total + gap,
-      0
-    ) / gaps.length;
-
-
-  /* VARIANCE */
-
-  const variance =
-    gaps.reduce(
-      (total, gap) =>
-        total +
-        Math.pow(
-          gap - averageGap,
-          2
-        ),
-      0
-    ) / gaps.length;
-
-
-  const standardDeviation =
-    Math.sqrt(variance);
-
-
-  /*
-    Consider the rhythm stable if
-    timing variation is less than
-    roughly 35% of the average period.
-  */
-
-  const stable =
-    standardDeviation <
-    averageGap * 0.35;
-
-
-  /* =====================================================
-     LOCK ONTO REPEATING SOUND
-     ===================================================== */
-
-  if (
-    stable &&
-    averageGap > 0.15 &&
-    averageGap < 3.0
-  ) {
-
-    lockedPeriod =
-      averageGap;
-
-    cyclesLocked++;
-
-    periodVal.textContent =
-      lockedPeriod.toFixed(2) + "s";
-
-    lockVal.textContent =
-      cyclesLocked;
-
-
-    /*
-      Predict the next occurrence.
-    */
-
-    scheduleAntiNoise(
-      time + lockedPeriod
-    );
+    sensorVal.textContent =
+      "unavailable";
 
   } else {
 
-    periodVal.textContent =
-      "locking…";
-  }
-}
+    sensorVal.textContent =
+      "available";
 
-
-/* =========================================================
-   SCHEDULE TEST ANTI-NOISE BURST
-   ========================================================= */
-
-function scheduleAntiNoise(
-  targetTime
-) {
-
-  if (
-    !audioCtx ||
-    targetTime <= audioCtx.currentTime
-  ) {
-
-    return;
   }
 
-
-  /*
-    TEMPORARY TEST SIGNAL
-
-    This random-noise burst is NOT
-    actual phase cancellation.
-
-    Later this will be replaced with
-    captured/inverted target audio.
-  */
-
-  const duration =
-    0.08;
-
-  const bufferSize =
-    Math.floor(
-      audioCtx.sampleRate *
-      duration
-    );
-
-
-  const buffer =
-    audioCtx.createBuffer(
-      1,
-      bufferSize,
-      audioCtx.sampleRate
-    );
-
-
-  const channel =
-    buffer.getChannelData(0);
-
-
-  for (
-    let i = 0;
-    i < bufferSize;
-    i++
-  ) {
-
-    /*
-      Smooth envelope prevents
-      hard digital clicks.
-    */
-
-    const envelope =
-      Math.sin(
-        Math.PI *
-        i /
-        bufferSize
-      );
-
-
-    channel[i] =
-      (Math.random() * 2 - 1) *
-      envelope *
-      0.5;
-  }
-
-
-  const source =
-    audioCtx.createBufferSource();
-
-
-  source.buffer =
-    buffer;
-
-
-  source.connect(
-    audioCtx.destination
-  );
-
-
-  source.start(
-    targetTime
-  );
-
-
-  firesCount++;
-
-  fireVal.textContent =
-    firesCount;
-}
-
-
-/* =========================================================
-   CANVAS SIZE
-   ========================================================= */
-
-function resizeCanvas() {
-
-  const rect =
-    canvas.getBoundingClientRect();
-
-
-  const pixelRatio =
-    window.devicePixelRatio || 1;
-
-
-  const width =
-    Math.max(
-      1,
-      Math.floor(
-        rect.width *
-        pixelRatio
-      )
-    );
-
-
-  const height =
-    Math.max(
-      1,
-      Math.floor(
-        rect.height *
-        pixelRatio
-      )
-    );
-
-
-  if (
-    canvas.width !== width ||
-    canvas.height !== height
-  ) {
-
-    canvas.width =
-      width;
-
-    canvas.height =
-      height;
-  }
-}
-
-
-window.addEventListener(
-  "resize",
-  resizeCanvas
-);
-
-
-/* =========================================================
-   DRAW LIVE LEVEL SCOPE
-   ========================================================= */
-
-function drawScope(rms) {
-
-  resizeCanvas();
-
-
-  const width =
-    canvas.width;
-
-  const height =
-    canvas.height;
-
-
-  if (
-    width < 3 ||
-    height < 1
-  ) {
-
-    return;
-  }
-
-
-  /*
-    Shift existing display left
-    by two physical pixels.
-  */
-
-  ctx.drawImage(
-    canvas,
-    2,
-    0,
-    width - 2,
-    height,
-    0,
-    0,
-    width - 2,
-    height
-  );
-
-
-  /* CLEAR RIGHT EDGE */
-
-  ctx.fillStyle =
-    "#0b1220";
-
-  ctx.fillRect(
-    width - 2,
-    0,
-    2,
-    height
-  );
-
-
-  /* CURRENT AUDIO LEVEL */
-
-  const normalized =
-    Math.min(
-      rms * 4,
-      1
-    );
-
-
-  const barHeight =
-    normalized *
-    height;
-
-
-  ctx.fillStyle =
-    aboveThreshold
-      ? "#ff5d5d"
-      : "#4fb0ff";
-
-
-  ctx.fillRect(
-    width - 2,
-    height - barHeight,
-    2,
-    barHeight
-  );
-}
-
-
-/* =========================================================
-   INITIAL CANVAS SETUP
-   ========================================================= */
-
-window.addEventListener(
-  "load",
-  () => {
-
-    resizeCanvas();
-
-    ctx.fillStyle =
-      "#121b2e";
-
-    ctx.fillRect(
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    );
-  }
-);
+});
