@@ -9,9 +9,8 @@
     content="width=device-width, initial-scale=1.0, viewport-fit=cover"
   >
 
-  <title>QZ Core Engine</title>
+  <title>Quiet Zone TNC</title>
 
-  <!-- QZ CSS -->
   <link rel="stylesheet" href="./style.css">
 </head>
 
@@ -20,7 +19,10 @@
   <main class="panel">
 
     <header>
-      <h1>QZ<span>·</span>Core</h1>
+      <div>
+        <h1>QZ<span>·</span>TNC</h1>
+        <div class="subtitle">Targeted Noise Cancellation</div>
+      </div>
 
       <button
         class="info-btn"
@@ -33,44 +35,106 @@
     </header>
 
 
-    <!-- PRIMARY CONTROL -->
-    <button
-      class="start-btn"
-      id="startBtn"
-      type="button"
-    >
-      Start listening
-    </button>
+    <!-- DIRECTION TARGET -->
+    <section class="target-area">
+
+      <button
+        class="arrow-btn"
+        id="arrowBtn"
+        type="button"
+        aria-label="Push phone toward unwanted noise"
+      >
+        <span class="arrow">↑</span>
+        <span class="arrow-label">PUSH TOWARD NOISE</span>
+        <span class="arrow-status" id="arrowStatus">
+          Touch arrow to begin
+        </span>
+      </button>
+
+    </section>
 
 
     <!-- LIVE STATUS -->
-    <section class="readout" aria-label="QZ status">
+    <section class="readout" aria-label="Direction status">
 
       <div class="stat">
-        <span class="value" id="periodVal">—</span>
-        <span class="label">Detected period</span>
+        <span class="value" id="motionVal">WAIT</span>
+        <span class="label">Motion</span>
       </div>
 
       <div class="stat">
-        <span class="value" id="lockVal">0</span>
-        <span class="label">Cycles locked</span>
+        <span class="value" id="directionVal">—</span>
+        <span class="label">Direction</span>
       </div>
 
       <div class="stat">
-        <span class="value" id="fireVal">0</span>
-        <span class="label">Anti-noise fired</span>
+        <span class="value" id="confidenceVal">0%</span>
+        <span class="label">Confidence</span>
       </div>
 
     </section>
 
 
-    <!-- LIVE AUDIO DISPLAY -->
-    <canvas
-      id="scope"
-      width="600"
-      height="400"
-      aria-label="Live QZ audio display"
-    ></canvas>
+    <!-- CONTROLS -->
+    <div class="controls">
+
+      <button
+        class="control-btn"
+        id="tareBtn"
+        type="button"
+      >
+        Tare / Reset
+      </button>
+
+      <button
+        class="control-btn"
+        id="diagnosticsBtn"
+        type="button"
+      >
+        Diagnostics
+      </button>
+
+    </div>
+
+
+    <!-- DIAGNOSTICS -->
+    <section
+      class="diagnostics"
+      id="diagnostics"
+      aria-label="Motion diagnostics"
+    >
+
+      <div>
+        <span>X</span>
+        <strong id="xVal">0.00</strong>
+      </div>
+
+      <div>
+        <span>Y</span>
+        <strong id="yVal">0.00</strong>
+      </div>
+
+      <div>
+        <span>Z</span>
+        <strong id="zVal">0.00</strong>
+      </div>
+
+      <div>
+        <span>Peak</span>
+        <strong id="peakVal">0.00</strong>
+      </div>
+
+      <div>
+        <span>Gesture</span>
+        <strong id="gestureVal">0 ms</strong>
+      </div>
+
+      <div>
+        <span>Sensor</span>
+        <strong id="sensorVal">checking…</strong>
+      </div>
+
+    </section>
 
   </main>
 
@@ -95,19 +159,23 @@
         ✕
       </button>
 
-      <h2 id="infoTitle">How this works</h2>
+      <h2 id="infoTitle">QZ TNC Direction Test</h2>
 
       <p>
-        This proves timing, not true sample-level phase cancellation.
-        Browser audio has real round-trip latency, typically 100ms or
-        more, so this test cannot react instantly to a single sound.
+        Place the phone flat with the top edge pointing toward
+        the unwanted sound.
 
-        Once a sound repeats several times, QZ detects the rhythm,
-        predicts when the next cycle should occur, and schedules an
-        anti-noise burst for that predicted moment.
+        Touch and hold the arrow, then push the phone toward
+        the noise.
 
-        This brings the timing logic previously tested with the FxLMS
-        simulation into a live-audio test.
+        QZ reads the phone motion sensors and determines when
+        it has enough directional information.
+
+        When QZ has the direction, the phone vibrates and
+        displays GOT IT.
+
+        This test proves the targeting gesture only. It does
+        not yet perform targeted noise cancellation.
       </p>
 
     </div>
@@ -115,7 +183,6 @@
   </div>
 
 
-  <!-- QZ JAVASCRIPT -->
   <script src="./script.js"></script>
 
 </body>
