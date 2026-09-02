@@ -10,9 +10,7 @@
 }
 
 
-/* =========================
-   RESET
-   ========================= */
+/* RESET */
 
 * {
   box-sizing: border-box;
@@ -21,7 +19,6 @@
 
 html {
   margin: 0;
-  padding: 0;
   width: 100%;
   height: 100%;
   background: var(--bg);
@@ -29,7 +26,6 @@ html {
 
 body {
   margin: 0;
-  padding: 0;
   width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
@@ -44,12 +40,12 @@ body {
     Roboto,
     Arial,
     sans-serif;
+
+  overscroll-behavior: none;
 }
 
 
-/* =========================
-   MAIN PHONE SCREEN
-   ========================= */
+/* MAIN SCREEN */
 
 .panel {
   width: 100%;
@@ -63,8 +59,7 @@ body {
 
   display: flex;
   flex-direction: column;
-
-  gap: 16px;
+  gap: 14px;
 
   background:
     radial-gradient(
@@ -75,13 +70,9 @@ body {
 }
 
 
-/* =========================
-   HEADER
-   ========================= */
+/* HEADER */
 
 header {
-  width: 100%;
-
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -93,7 +84,7 @@ h1 {
   font-size: 30px;
   line-height: 1;
 
-  font-weight: 750;
+  font-weight: 800;
   letter-spacing: -0.5px;
 }
 
@@ -101,18 +92,27 @@ h1 span {
   color: var(--blue);
 }
 
+.subtitle {
+  margin-top: 6px;
 
-/* INFO BUTTON */
+  color: var(--dim);
+
+  font-size: 12px;
+  font-weight: 700;
+
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
 
 .info-btn {
   width: 48px;
   height: 48px;
 
-  padding: 0;
-
   display: flex;
   align-items: center;
   justify-content: center;
+
+  padding: 0;
 
   border: 2px solid var(--border);
   border-radius: 50%;
@@ -127,42 +127,102 @@ h1 span {
 }
 
 
-/* =========================
-   START LISTENING BUTTON
-   ========================= */
+/* TARGET */
 
-.start-btn {
+.target-area {
+  flex: 1 1 auto;
+
+  min-height: 390px;
+
+  display: flex;
+}
+
+.arrow-btn {
   width: 100%;
-  min-height: 72px;
+  min-height: 100%;
 
-  padding: 12px 16px;
+  padding: 18px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 
   border: 2px solid var(--blue);
-  border-radius: 18px;
+  border-radius: 26px;
 
-  background: var(--panel);
+  background:
+    radial-gradient(
+      circle at center,
+      #172b48 0%,
+      var(--panel) 68%
+    );
+
   color: var(--text);
 
-  font-size: 24px;
-  font-weight: 750;
+  touch-action: none;
+  user-select: none;
 
   cursor: pointer;
 }
 
-.start-btn:active {
-  transform: scale(0.98);
+.arrow-btn:active,
+.arrow-btn.armed {
+  transform: scale(0.99);
+  border-color: var(--green);
 }
 
-.start-btn.listening {
+.arrow-btn.acquired {
   border-color: var(--green);
   background: #10271f;
+}
+
+.arrow {
+  display: block;
+
+  margin-top: -12px;
+
+  color: var(--blue);
+
+  font-size: clamp(190px, 48vw, 280px);
+  line-height: 0.78;
+
+  font-weight: 300;
+}
+
+.arrow-btn.armed .arrow,
+.arrow-btn.acquired .arrow {
   color: var(--green);
 }
 
+.arrow-label {
+  margin-top: 24px;
 
-/* =========================
-   STATUS READOUT
-   ========================= */
+  font-size: 24px;
+  line-height: 1.1;
+
+  font-weight: 850;
+  letter-spacing: 0.02em;
+}
+
+.arrow-status {
+  margin-top: 10px;
+
+  color: var(--dim);
+
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.arrow-btn.acquired .arrow-status {
+  color: var(--green);
+
+  font-size: 22px;
+  font-weight: 850;
+}
+
+
+/* STATUS */
 
 .readout {
   width: 100%;
@@ -172,7 +232,7 @@ h1 span {
 
   gap: 8px;
 
-  padding: 14px 8px;
+  padding: 12px 6px;
 
   background: var(--panel);
 
@@ -189,13 +249,13 @@ h1 span {
   align-items: center;
   justify-content: center;
 
-  text-align: center;
+  gap: 7px;
 
-  gap: 8px;
+  text-align: center;
 }
 
 .stat .value {
-  font-size: 32px;
+  font-size: 22px;
   line-height: 1;
 
   font-weight: 800;
@@ -206,52 +266,99 @@ h1 span {
 .stat .label {
   color: var(--dim);
 
-  font-size: 12px;
-  line-height: 1.2;
-
-  font-weight: 650;
+  font-size: 11px;
+  font-weight: 700;
 
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 
 
-/* =========================
-   LIVE SCOPE
-   ========================= */
+/* CONTROLS */
 
-#scope {
-  width: 100%;
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
 
-  flex: 1 1 auto;
+  gap: 8px;
+}
 
-  min-height: 240px;
+.control-btn {
+  min-height: 48px;
 
-  display: block;
-
-  background: var(--panel);
+  padding: 10px;
 
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 14px;
+
+  background: var(--panel);
+  color: var(--text);
+
+  font-size: 15px;
+  font-weight: 700;
+
+  cursor: pointer;
 }
 
 
-/* =========================
-   INFORMATION OVERLAY
-   ========================= */
+/* DIAGNOSTICS */
+
+.diagnostics {
+  display: none;
+
+  grid-template-columns: repeat(3, 1fr);
+
+  gap: 8px;
+
+  padding: 12px;
+
+  background: #0b1424;
+
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.diagnostics.open {
+  display: grid;
+}
+
+.diagnostics div {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 3px;
+
+  text-align: center;
+}
+
+.diagnostics span {
+  color: var(--dim);
+
+  font-size: 10px;
+  font-weight: 700;
+
+  text-transform: uppercase;
+}
+
+.diagnostics strong {
+  font-size: 14px;
+
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* INFORMATION SHEET */
 
 .sheet {
   position: fixed;
 
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  inset: 0;
 
   z-index: 1000;
 
   display: none;
-
   align-items: flex-end;
 
   background: rgba(0, 0, 0, 0.72);
@@ -277,7 +384,6 @@ h1 span {
   background: var(--panel);
 
   border-top: 1px solid var(--border);
-
   border-radius: 24px 24px 0 0;
 }
 
@@ -285,7 +391,6 @@ h1 span {
   margin: 0 50px 16px 0;
 
   font-size: 26px;
-  line-height: 1.15;
 }
 
 .sheet-inner p {
@@ -295,15 +400,9 @@ h1 span {
 
   font-size: 17px;
   line-height: 1.55;
+
+  white-space: pre-line;
 }
-
-.sheet-inner em {
-  color: var(--blue);
-  font-style: normal;
-}
-
-
-/* CLOSE BUTTON */
 
 .sheet-close {
   position: absolute;
@@ -328,9 +427,7 @@ h1 span {
 }
 
 
-/* =========================
-   DESKTOP / TABLET
-   ========================= */
+/* DESKTOP */
 
 @media (min-width: 600px) {
 
