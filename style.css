@@ -9,28 +9,20 @@
   --red: #ff5d5d;
 }
 
-
-/* RESET */
-
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
 }
 
-html {
+html,
+body {
   margin: 0;
   width: 100%;
-  height: 100%;
+  min-height: 100%;
   background: var(--bg);
 }
 
 body {
-  margin: 0;
-  width: 100%;
-  min-height: 100vh;
-  min-height: 100dvh;
-
-  background: var(--bg);
   color: var(--text);
 
   font-family:
@@ -40,17 +32,11 @@ body {
     Roboto,
     Arial,
     sans-serif;
-
-  overscroll-behavior: none;
 }
-
-
-/* MAIN SCREEN */
 
 .panel {
   width: 100%;
   min-height: 100vh;
-  min-height: 100dvh;
 
   padding:
     18px
@@ -59,6 +45,7 @@ body {
 
   display: flex;
   flex-direction: column;
+
   gap: 14px;
 
   background:
@@ -68,9 +55,6 @@ body {
       var(--bg) 65%
     );
 }
-
-
-/* HEADER */
 
 header {
   display: flex;
@@ -85,7 +69,6 @@ h1 {
   line-height: 1;
 
   font-weight: 800;
-  letter-spacing: -0.5px;
 }
 
 h1 span {
@@ -108,12 +91,6 @@ h1 span {
   width: 48px;
   height: 48px;
 
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  padding: 0;
-
   border: 2px solid var(--border);
   border-radius: 50%;
 
@@ -122,24 +99,18 @@ h1 span {
 
   font-size: 22px;
   font-weight: 700;
-
-  cursor: pointer;
 }
-
-
-/* TARGET */
 
 .target-area {
   flex: 1 1 auto;
 
-  min-height: 390px;
+  min-height: 320px;
 
   display: flex;
 }
 
 .arrow-btn {
   width: 100%;
-  min-height: 100%;
 
   padding: 18px;
 
@@ -161,14 +132,9 @@ h1 span {
   color: var(--text);
 
   touch-action: none;
-  user-select: none;
-
-  cursor: pointer;
 }
 
-.arrow-btn:active,
 .arrow-btn.armed {
-  transform: scale(0.99);
   border-color: var(--green);
 }
 
@@ -178,16 +144,10 @@ h1 span {
 }
 
 .arrow {
-  display: block;
-
-  margin-top: -12px;
-
   color: var(--blue);
 
-  font-size: clamp(190px, 48vw, 280px);
-  line-height: 0.78;
-
-  font-weight: 300;
+  font-size: clamp(150px, 44vw, 250px);
+  line-height: 0.8;
 }
 
 .arrow-btn.armed .arrow,
@@ -196,13 +156,10 @@ h1 span {
 }
 
 .arrow-label {
-  margin-top: 24px;
+  margin-top: 20px;
 
-  font-size: 24px;
-  line-height: 1.1;
-
+  font-size: 22px;
   font-weight: 850;
-  letter-spacing: 0.02em;
 }
 
 .arrow-status {
@@ -221,12 +178,25 @@ h1 span {
   font-weight: 850;
 }
 
+.audio-btn {
+  width: 100%;
+  min-height: 64px;
 
-/* STATUS */
+  border: 2px solid var(--green);
+  border-radius: 18px;
+
+  background: var(--panel);
+  color: var(--green);
+
+  font-size: 21px;
+  font-weight: 800;
+}
+
+.audio-btn.active {
+  background: #10271f;
+}
 
 .readout {
-  width: 100%;
-
   display: grid;
   grid-template-columns: repeat(3, 1fr);
 
@@ -241,13 +211,10 @@ h1 span {
 }
 
 .stat {
-  min-width: 0;
-
   display: flex;
   flex-direction: column;
 
   align-items: center;
-  justify-content: center;
 
   gap: 7px;
 
@@ -256,11 +223,7 @@ h1 span {
 
 .stat .value {
   font-size: 22px;
-  line-height: 1;
-
   font-weight: 800;
-
-  font-variant-numeric: tabular-nums;
 }
 
 .stat .label {
@@ -270,11 +233,40 @@ h1 span {
   font-weight: 700;
 
   text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
+.control-panel {
+  padding: 12px 14px;
 
-/* CONTROLS */
+  display: grid;
+  grid-template-columns: 1fr auto;
+
+  gap: 8px;
+
+  background: var(--panel);
+
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.control-panel label {
+  grid-column: 1 / -1;
+
+  color: var(--dim);
+
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.control-panel input {
+  width: 100%;
+}
+
+.control-panel strong {
+  min-width: 58px;
+
+  text-align: right;
+}
 
 .controls {
   display: grid;
@@ -286,8 +278,6 @@ h1 span {
 .control-btn {
   min-height: 48px;
 
-  padding: 10px;
-
   border: 1px solid var(--border);
   border-radius: 14px;
 
@@ -296,12 +286,7 @@ h1 span {
 
   font-size: 15px;
   font-weight: 700;
-
-  cursor: pointer;
 }
-
-
-/* DIAGNOSTICS */
 
 .diagnostics {
   display: none;
@@ -323,8 +308,6 @@ h1 span {
 }
 
 .diagnostics div {
-  min-width: 0;
-
   display: flex;
   flex-direction: column;
 
@@ -343,13 +326,8 @@ h1 span {
 }
 
 .diagnostics strong {
-  font-size: 14px;
-
-  font-variant-numeric: tabular-nums;
+  font-size: 13px;
 }
-
-
-/* INFORMATION SHEET */
 
 .sheet {
   position: fixed;
@@ -372,25 +350,19 @@ h1 span {
   position: relative;
 
   width: 100%;
-  max-height: 75vh;
 
   padding:
     24px
     22px
     calc(30px + env(safe-area-inset-bottom));
 
-  overflow-y: auto;
-
   background: var(--panel);
 
-  border-top: 1px solid var(--border);
   border-radius: 24px 24px 0 0;
 }
 
 .sheet-inner h2 {
   margin: 0 50px 16px 0;
-
-  font-size: 26px;
 }
 
 .sheet-inner p {
@@ -398,8 +370,8 @@ h1 span {
 
   color: var(--dim);
 
-  font-size: 17px;
-  line-height: 1.55;
+  font-size: 16px;
+  line-height: 1.5;
 
   white-space: pre-line;
 }
@@ -413,21 +385,12 @@ h1 span {
   width: 44px;
   height: 44px;
 
-  padding: 0;
-
   border: 1px solid var(--border);
   border-radius: 50%;
 
   background: #0b1424;
   color: var(--text);
-
-  font-size: 20px;
-
-  cursor: pointer;
 }
-
-
-/* DESKTOP */
 
 @media (min-width: 600px) {
 
