@@ -1,25 +1,25 @@
 /*
-  Quiet Zone TNC
-  Directional Targeting Prototype
+  QZ TNC
+  Target + live inverted-audio experiment
 
-  PURPOSE:
-  Detect a deliberate phone push toward an unwanted
-  sound source.
+  This version proves:
 
-  USER ACTION:
-  1. Point top edge / arrow toward noise.
-  2. Touch and hold arrow.
-  3. Push phone toward noise.
-  4. QZ detects sufficient forward motion.
-  5. Phone vibrates: GOT IT.
+  microphone
+      ->
+  Web Audio processing
+      ->
+  connected headphones / earbuds
 
-  This version proves the targeting gesture.
-  It does NOT yet perform TNC.
+  The target gesture arms QZ.
+
+  Bluetooth latency may prevent useful cancellation.
+  That is one of the things this build is designed
+  to expose.
 */
 
 
 /* =========================================================
-   PAGE ELEMENTS
+   ELEMENTS
    ========================================================= */
 
 const infoBtn =
@@ -37,14 +37,29 @@ const arrowBtn =
 const arrowStatus =
   document.getElementById("arrowStatus");
 
-const motionVal =
-  document.getElementById("motionVal");
+const audioBtn =
+  document.getElementById("audioBtn");
 
-const directionVal =
-  document.getElementById("directionVal");
+const targetVal =
+  document.getElementById("targetVal");
 
-const confidenceVal =
-  document.getElementById("confidenceVal");
+const micVal =
+  document.getElementById("micVal");
+
+const qzVal =
+  document.getElementById("qzVal");
+
+const gainSlider =
+  document.getElementById("gainSlider");
+
+const gainVal =
+  document.getElementById("gainVal");
+
+const delaySlider =
+  document.getElementById("delaySlider");
+
+const delayVal =
+  document.getElementById("delayVal");
 
 const tareBtn =
   document.getElementById("tareBtn");
@@ -61,30 +76,28 @@ const xVal =
 const yVal =
   document.getElementById("yVal");
 
-const zVal =
-  document.getElementById("zVal");
-
 const peakVal =
   document.getElementById("peakVal");
-
-const gestureVal =
-  document.getElementById("gestureVal");
 
 const sensorVal =
   document.getElementById("sensorVal");
 
+const audioStateVal =
+  document.getElementById("audioStateVal");
+
+const sampleRateVal =
+  document.getElementById("sampleRateVal");
+
 
 /* =========================================================
-   STATE
+   MOTION STATE
    ========================================================= */
 
 let sensorActive = false;
 
 let gestureActive = false;
 
-let acquired = false;
-
-let gestureStart = 0;
+let targetAcquired = false;
 
 let peakAcceleration = 0;
 
@@ -95,88 +108,87 @@ let sidewaysEnergy = 0;
 let sampleCount = 0;
 
 
-/*
-  Phone coordinates when screen is facing upward:
+/* =========================================================
+   AUDIO STATE
+   ========================================================= */
 
-  X = left / right
-  Y = top / bottom
-  Z = through screen
+let audioCtx = null;
 
-  A deliberate push toward the TOP edge of the phone
-  should primarily appear on the Y axis.
+let micStream = null;
 
-  Different browsers / devices can reverse sign,
-  so Prototype One initially measures axis dominance
-  rather than trusting one fixed sign.
-*/
+let micSource = null;
+
+let filterNode = null;
+
+let delayNode = null;
+
+let inverterNode = null;
+
+let limiterNode = null;
+
+let audioRunning = false;
 
 
 /* =========================================================
-   TUNING
+   TARGET SETTINGS
    ========================================================= */
 
-/*
-  Minimum useful horizontal acceleration.
+const MIN_ACCELERATION =
+  0.35;
 
-  This will almost certainly need tuning on Gary's
-  actual phone after the first physical test.
-*/
+const MIN_SAMPLES =
+  4;
 
-const MIN_ACCELERATION = 0.35;
-
-
-/*
-  Number of meaningful motion samples required before
-  QZ is willing to say GOT IT.
-*/
-
-const MIN_SAMPLES = 4;
-
-
-/*
-  Forward-axis motion must dominate sideways motion.
-
-  1.5 means Y energy needs to be about 50% stronger
-  than X energy.
-*/
-
-const DIRECTION_RATIO = 1.5;
+const DIRECTION_RATIO =
+  1.5;
 
 
 /* =========================================================
    INFO
    ========================================================= */
 
-infoBtn.addEventListener("click", () => {
-  infoSheet.classList.add("open");
-});
+infoBtn.addEventListener(
+  "click",
+  () => {
+    infoSheet.classList.add("open");
+  }
+);
 
-infoClose.addEventListener("click", () => {
-  infoSheet.classList.remove("open");
-});
-
-infoSheet.addEventListener("click", (event) => {
-
-  if (event.target === infoSheet) {
+infoClose.addEventListener(
+  "click",
+  () => {
     infoSheet.classList.remove("open");
   }
+);
 
-});
+infoSheet.addEventListener(
+  "click",
+  event => {
+
+    if (event.target === infoSheet) {
+      infoSheet.classList.remove("open");
+    }
+
+  }
+);
 
 
 /* =========================================================
    DIAGNOSTICS
    ========================================================= */
 
-diagnosticsBtn.addEventListener("click", () => {
+diagnosticsBtn.addEventListener(
+  "click",
+  () => {
 
-  diagnostics.classList.toggle("open");
+    diagnostics.classList.toggle("open");
 
-});
+  }
+);
 
 
 /* =========================================================
-   SENSOR PERMISSION
+   MOTION SENSOR
    ========================================================= */
 
 async function enableMotionSensors() {
@@ -184,14 +196,6 @@ async function enableMotionSensors() {
   if (sensorActive) {
     return true;
   }
-
-
-  /*
-    iOS requires motion permission to be requested
-    from a direct user gesture.
-
-    Android usually does not require this step.
-  */
 
   try {
 
@@ -205,28 +209,22 @@ async function enableMotionSensors() {
 
       if (permission !== "granted") {
 
-        sensorVal.textContent = "denied";
-
-        arrowStatus.textContent =
-          "Motion permission denied";
+        sensorVal.textContent =
+          "denied";
 
         return false;
       }
     }
 
-
     if (
       typeof DeviceMotionEvent === "undefined"
     ) {
 
-      sensorVal.textContent = "unavailable";
-
-      arrowStatus.textContent =
-        "Motion sensor unavailable";
+      sensorVal.textContent =
+        "unavailable";
 
       return false;
     }
-
 
     window.addEventListener(
       "devicemotion",
@@ -236,30 +234,25 @@ async function enableMotionSensors() {
 
     sensorActive = true;
 
-    sensorVal.textContent = "ready";
+    sensorVal.textContent =
+      "ready";
 
     return true;
 
   } catch (error) {
 
-    console.error(
-      "QZ motion sensor error:",
-      error
-    );
+    console.error(error);
 
-    sensorVal.textContent = "error";
-
-    arrowStatus.textContent =
-      "Motion sensor error";
+    sensorVal.textContent =
+      "error";
 
     return false;
   }
-
 }
 
 
 /* =========================================================
-   START TARGETING GESTURE
+   TARGET GESTURE
    ========================================================= */
 
 async function startGesture(event) {
@@ -270,38 +263,34 @@ async function startGesture(event) {
     await enableMotionSensors();
 
   if (!ready) {
+
+    arrowStatus.textContent =
+      "Motion sensor unavailable";
+
     return;
   }
 
-
-  resetGestureData();
+  resetMotion();
 
   gestureActive = true;
 
-  acquired = false;
+  targetAcquired = false;
 
-  gestureStart =
-    performance.now();
+  arrowBtn.classList.remove(
+    "acquired"
+  );
 
-  arrowBtn.classList.add("armed");
-
-  arrowBtn.classList.remove("acquired");
-
-  motionVal.textContent = "MOVE";
-
-  directionVal.textContent = "↑";
-
-  confidenceVal.textContent = "0%";
+  arrowBtn.classList.add(
+    "armed"
+  );
 
   arrowStatus.textContent =
     "Push phone toward noise";
 
+  targetVal.textContent =
+    "WAIT";
 }
 
-
-/* =========================================================
-   END TARGETING GESTURE
-   ========================================================= */
 
 function endGesture(event) {
 
@@ -315,24 +304,21 @@ function endGesture(event) {
 
   gestureActive = false;
 
-  arrowBtn.classList.remove("armed");
+  arrowBtn.classList.remove(
+    "armed"
+  );
 
+  if (!targetAcquired) {
 
-  if (!acquired) {
-
-    motionVal.textContent = "TRY";
+    targetVal.textContent =
+      "NO";
 
     arrowStatus.textContent =
-      "Not enough direction — try again";
+      "Try again";
 
   }
-
 }
 
-
-/* =========================================================
-   POINTER EVENTS
-   ========================================================= */
 
 arrowBtn.addEventListener(
   "pointerdown",
@@ -349,24 +335,9 @@ arrowBtn.addEventListener(
   endGesture
 );
 
-arrowBtn.addEventListener(
-  "pointerleave",
-  (event) => {
-
-    if (
-      event.buttons === 0
-    ) {
-
-      endGesture(event);
-
-    }
-
-  }
-);
-
 
 /* =========================================================
-   MOTION DATA
+   MOTION HANDLER
    ========================================================= */
 
 function handleMotion(event) {
@@ -379,18 +350,11 @@ function handleMotion(event) {
     return;
   }
 
-
   const x =
     Number(acceleration.x) || 0;
 
   const y =
     Number(acceleration.y) || 0;
-
-  const z =
-    Number(acceleration.z) || 0;
-
-
-  /* LIVE DIAGNOSTICS */
 
   xVal.textContent =
     x.toFixed(2);
@@ -398,22 +362,13 @@ function handleMotion(event) {
   yVal.textContent =
     y.toFixed(2);
 
-  zVal.textContent =
-    z.toFixed(2);
+  if (
+    !gestureActive ||
+    targetAcquired
+  ) {
 
-
-  if (!gestureActive || acquired) {
     return;
   }
-
-
-  const elapsed =
-    performance.now() -
-    gestureStart;
-
-  gestureVal.textContent =
-    Math.round(elapsed) + " ms";
-
 
   const absX =
     Math.abs(x);
@@ -421,117 +376,52 @@ function handleMotion(event) {
   const absY =
     Math.abs(y);
 
-
-  /*
-    Ignore tiny movements and sensor noise.
-  */
-
-  const horizontalMagnitude =
+  const magnitude =
     Math.sqrt(
-      (x * x) +
-      (y * y)
+      x * x +
+      y * y
     );
 
-
   if (
-    horizontalMagnitude <
+    magnitude <
     MIN_ACCELERATION
   ) {
 
     return;
   }
 
-
   sampleCount++;
 
+  forwardEnergy +=
+    absY;
 
-  /*
-    We currently treat the phone's Y axis as the
-    forward/back axis because the arrow points toward
-    the physical top edge of the phone.
-  */
-
-  forwardEnergy += absY;
-
-  sidewaysEnergy += absX;
-
+  sidewaysEnergy +=
+    absX;
 
   if (
-    horizontalMagnitude >
+    magnitude >
     peakAcceleration
   ) {
 
     peakAcceleration =
-      horizontalMagnitude;
+      magnitude;
 
     peakVal.textContent =
       peakAcceleration.toFixed(2);
-
   }
-
-
-  evaluateDirection();
-
-}
-
-
-/* =========================================================
-   DIRECTION CONFIDENCE
-   ========================================================= */
-
-function evaluateDirection() {
-
-  if (sampleCount === 0) {
-    return;
-  }
-
-
-  const totalEnergy =
-    forwardEnergy +
-    sidewaysEnergy;
-
-
-  if (totalEnergy <= 0) {
-    return;
-  }
-
-
-  /*
-    Confidence represents how strongly the gesture
-    favors the phone's forward/back axis instead of
-    left/right motion.
-  */
-
-  const axisConfidence =
-    forwardEnergy /
-    totalEnergy;
-
-
-  const confidence =
-    Math.round(
-      axisConfidence * 100
-    );
-
-
-  confidenceVal.textContent =
-    confidence + "%";
-
 
   const directional =
     forwardEnergy >
     sidewaysEnergy *
     DIRECTION_RATIO;
 
-
   if (
     directional &&
     sampleCount >= MIN_SAMPLES
   ) {
 
-    acquireDirection();
-
+    acquireTarget();
   }
-
 }
 
 
@@ -539,146 +429,485 @@ function evaluateDirection() {
    TARGET ACQUIRED
    ========================================================= */
 
-function acquireDirection() {
+function acquireTarget() {
 
-  if (acquired) {
-    return;
-  }
-
-
-  acquired = true;
+  targetAcquired = true;
 
   gestureActive = false;
 
+  arrowBtn.classList.remove(
+    "armed"
+  );
 
-  arrowBtn.classList.remove("armed");
+  arrowBtn.classList.add(
+    "acquired"
+  );
 
-  arrowBtn.classList.add("acquired");
-
-
-  motionVal.textContent =
-    "LOCK";
-
-  directionVal.textContent =
-    "↑";
-
-  confidenceVal.textContent =
-    "100%";
+  targetVal.textContent =
+    "YES";
 
   arrowStatus.textContent =
     "GOT IT";
-
-
-  /*
-    HAPTIC CONFIRMATION
-
-    Android browsers generally support navigator.vibrate.
-    Devices/browsers without vibration simply ignore it.
-  */
 
   if ("vibrate" in navigator) {
 
     navigator.vibrate(
       [80, 50, 140]
     );
-
   }
 
-
-  console.log(
-    "QZ TARGET ACQUIRED",
-    {
-      timestamp:
-        new Date().toISOString(),
-
-      forwardEnergy,
-      sidewaysEnergy,
-      sampleCount,
-      peakAcceleration,
-
-      gestureMilliseconds:
-        Math.round(
-          performance.now() -
-          gestureStart
-        )
-    }
-  );
-
+  updateAudioGain();
 }
 
 
 /* =========================================================
-   RESET / TARE
+   AUDIO ENGINE
    ========================================================= */
 
-tareBtn.addEventListener("click", () => {
+audioBtn.addEventListener(
+  "click",
+  async () => {
 
-  resetGestureData();
+    if (!audioRunning) {
 
-  gestureActive = false;
+      await startAudio();
 
-  acquired = false;
+    } else {
+
+      stopAudio();
+
+    }
+
+  }
+);
 
 
-  arrowBtn.classList.remove(
-    "armed",
-    "acquired"
+async function startAudio() {
+
+  try {
+
+    /*
+      Disable browser voice-processing features
+      whenever the browser allows it.
+
+      We want the rawest microphone signal possible.
+    */
+
+    micStream =
+      await navigator.mediaDevices.getUserMedia({
+
+        audio: {
+
+          echoCancellation: false,
+
+          noiseSuppression: false,
+
+          autoGainControl: false
+
+        }
+
+      });
+
+
+    audioCtx =
+      new (
+        window.AudioContext ||
+        window.webkitAudioContext
+      )();
+
+
+    if (
+      audioCtx.state === "suspended"
+    ) {
+
+      await audioCtx.resume();
+    }
+
+
+    micSource =
+      audioCtx.createMediaStreamSource(
+        micStream
+      );
+
+
+    /*
+      LOW-PASS FILTER
+
+      Start by concentrating on frequencies
+      where cancellation has a better chance.
+
+      Music above this frequency still passes
+      acoustically, but QZ does not initially
+      try to fight it.
+    */
+
+    filterNode =
+      audioCtx.createBiquadFilter();
+
+    filterNode.type =
+      "lowpass";
+
+    filterNode.frequency.value =
+      500;
+
+    filterNode.Q.value =
+      0.7;
+
+
+    /*
+      ADJUSTABLE DELAY
+    */
+
+    delayNode =
+      audioCtx.createDelay(0.5);
+
+    delayNode.delayTime.value =
+      Number(delaySlider.value);
+
+
+    /*
+      PHASE INVERSION
+
+      Negative gain flips signal polarity.
+    */
+
+    inverterNode =
+      audioCtx.createGain();
+
+
+    /*
+      LIMITER / SAFETY
+    */
+
+    limiterNode =
+      audioCtx.createDynamicsCompressor();
+
+    limiterNode.threshold.value =
+      -18;
+
+    limiterNode.knee.value =
+      10;
+
+    limiterNode.ratio.value =
+      12;
+
+    limiterNode.attack.value =
+      0.003;
+
+    limiterNode.release.value =
+      0.20;
+
+
+    micSource
+      .connect(filterNode);
+
+    filterNode
+      .connect(delayNode);
+
+    delayNode
+      .connect(inverterNode);
+
+    inverterNode
+      .connect(limiterNode);
+
+    limiterNode
+      .connect(audioCtx.destination);
+
+
+    audioRunning =
+      true;
+
+
+    micVal.textContent =
+      "LIVE";
+
+    qzVal.textContent =
+      targetAcquired
+        ? "ON"
+        : "ARMED";
+
+    audioStateVal.textContent =
+      "running";
+
+    sampleRateVal.textContent =
+      audioCtx.sampleRate + " Hz";
+
+    audioBtn.textContent =
+      "Stop QZ Audio";
+
+    audioBtn.classList.add(
+      "active"
+    );
+
+
+    updateAudioGain();
+
+  } catch (error) {
+
+    console.error(
+      "QZ audio error:",
+      error
+    );
+
+    alert(
+      "QZ could not start the microphone. " +
+      "Check microphone permission."
+    );
+
+  }
+}
+
+
+/* =========================================================
+   AUDIO GAIN
+   ========================================================= */
+
+function updateAudioGain() {
+
+  if (!inverterNode) {
+    return;
+  }
+
+  /*
+    QZ stays silent until a target
+    has been acquired.
+
+    Negative gain = polarity inversion.
+  */
+
+  const requestedGain =
+    Number(gainSlider.value);
+
+  const actualGain =
+    targetAcquired
+      ? -requestedGain
+      : 0;
+
+
+  inverterNode.gain.setTargetAtTime(
+    actualGain,
+    audioCtx.currentTime,
+    0.02
   );
 
 
-  motionVal.textContent =
-    "WAIT";
-
-  directionVal.textContent =
-    "—";
-
-  confidenceVal.textContent =
-    "0%";
-
-  arrowStatus.textContent =
-    "Touch arrow to begin";
+  qzVal.textContent =
+    targetAcquired
+      ? "ON"
+      : "ARMED";
+}
 
 
-  gestureVal.textContent =
-    "0 ms";
+/* =========================================================
+   STOP AUDIO
+   ========================================================= */
+
+function stopAudio() {
+
+  audioRunning =
+    false;
+
+
+  if (micStream) {
+
+    micStream
+      .getTracks()
+      .forEach(
+        track => track.stop()
+      );
+
+  }
+
+
+  if (audioCtx) {
+
+    audioCtx.close();
+
+  }
+
+
+  audioCtx = null;
+
+  micStream = null;
+
+  micSource = null;
+
+  filterNode = null;
+
+  delayNode = null;
+
+  inverterNode = null;
+
+  limiterNode = null;
+
+
+  micVal.textContent =
+    "OFF";
+
+  qzVal.textContent =
+    "OFF";
+
+  audioStateVal.textContent =
+    "stopped";
+
+  audioBtn.textContent =
+    "Start QZ Audio";
+
+  audioBtn.classList.remove(
+    "active"
+  );
+}
+
+
+/* =========================================================
+   SLIDERS
+   ========================================================= */
+
+gainSlider.addEventListener(
+  "input",
+  () => {
+
+    const percent =
+      Math.round(
+        Number(gainSlider.value) *
+        100
+      );
+
+    gainVal.textContent =
+      percent + "%";
+
+    updateAudioGain();
+
+  }
+);
+
+
+delaySlider.addEventListener(
+  "input",
+  () => {
+
+    const delay =
+      Number(delaySlider.value);
+
+    delayVal.textContent =
+      Math.round(
+        delay * 1000
+      ) +
+      " ms";
+
+
+    if (delayNode && audioCtx) {
+
+      delayNode.delayTime
+        .setTargetAtTime(
+          delay,
+          audioCtx.currentTime,
+          0.01
+        );
+
+    }
+
+  }
+);
+
+
+/* =========================================================
+   RESET TARGET
+   ========================================================= */
+
+tareBtn.addEventListener(
+  "click",
+  () => {
+
+    targetAcquired =
+      false;
+
+    gestureActive =
+      false;
+
+    resetMotion();
+
+
+    arrowBtn.classList.remove(
+      "armed",
+      "acquired"
+    );
+
+
+    targetVal.textContent =
+      "NO";
+
+    arrowStatus.textContent =
+      "Touch arrow to target";
+
+
+    if (
+      inverterNode &&
+      audioCtx
+    ) {
+
+      inverterNode.gain
+        .setTargetAtTime(
+          0,
+          audioCtx.currentTime,
+          0.02
+        );
+
+    }
+
+
+    if (audioRunning) {
+
+      qzVal.textContent =
+        "ARMED";
+
+    }
+
+  }
+);
+
+
+function resetMotion() {
+
+  peakAcceleration =
+    0;
+
+  forwardEnergy =
+    0;
+
+  sidewaysEnergy =
+    0;
+
+  sampleCount =
+    0;
 
   peakVal.textContent =
     "0.00";
-
-});
-
-
-function resetGestureData() {
-
-  peakAcceleration = 0;
-
-  forwardEnergy = 0;
-
-  sidewaysEnergy = 0;
-
-  sampleCount = 0;
-
 }
 
 
 /* =========================================================
-   INITIAL SENSOR CHECK
+   INITIAL CHECK
    ========================================================= */
 
-window.addEventListener("load", () => {
+window.addEventListener(
+  "load",
+  () => {
 
-  if (
-    typeof DeviceMotionEvent === "undefined"
-  ) {
+    if (
+      typeof DeviceMotionEvent ===
+      "undefined"
+    ) {
 
-    sensorVal.textContent =
-      "unavailable";
+      sensorVal.textContent =
+        "unavailable";
 
-  } else {
+    } else {
 
-    sensorVal.textContent =
-      "available";
+      sensorVal.textContent =
+        "available";
+
+    }
 
   }
-
-});
+);
