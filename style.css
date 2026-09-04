@@ -1,537 +1,1203 @@
-:root {
-  --bg: #08111f;
-  --panel: #111c30;
-  --border: #263653;
-  --text: #f2f6ff;
-  --dim: #9aa8c0;
-  --blue: #4fb0ff;
-  --green: #46d39a;
-  --red: #ff5d5d;
-}
+/*
+  QUIET ZONE TNC
+
+  TEST VERSION
+
+  STAGE 1:
+  Human identifies ↑ THAT with a physical phone push.
+
+  STAGE 2:
+  QZ microphone/audio path can be switched ON/OFF
+  without changing the target.
+
+  IMPORTANT:
+  This remains an experiment.
+  Audible output does not automatically mean
+  acoustic cancellation has occurred.
+*/
 
 
-/* RESET */
+/* =========================================================
+   ELEMENTS
+   ========================================================= */
 
-* {
-  box-sizing: border-box;
-  -webkit-tap-highlight-color: transparent;
-}
+const arrowBtn =
+  document.getElementById("arrowBtn");
 
-html,
-body {
-  margin: 0;
-  width: 100%;
-  min-height: 100%;
-  background: var(--bg);
-}
+const arrowStatus =
+  document.getElementById("arrowStatus");
 
-body {
-  color: var(--text);
+const targetVal =
+  document.getElementById("targetVal");
 
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    Arial,
-    sans-serif;
+const directionVal =
+  document.getElementById("directionVal");
 
-  overscroll-behavior: none;
-}
+const confidenceVal =
+  document.getElementById("confidenceVal");
 
+const audioBtn =
+  document.getElementById("audioBtn");
 
-/* MAIN */
+const micVal =
+  document.getElementById("micVal");
 
-.panel {
-  width: 100%;
-  min-height: 100vh;
-  min-height: 100dvh;
+const qzVal =
+  document.getElementById("qzVal");
 
-  padding:
-    18px
-    16px
-    calc(18px + env(safe-area-inset-bottom));
+const gainSlider =
+  document.getElementById("gainSlider");
 
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+const gainVal =
+  document.getElementById("gainVal");
 
-  background:
-    radial-gradient(
-      ellipse at top,
-      #13213a 0%,
-      var(--bg) 65%
-    );
-}
+const resetBtn =
+  document.getElementById("resetBtn");
 
+const diagnosticsBtn =
+  document.getElementById("diagnosticsBtn");
 
-/* HEADER */
+const diagnostics =
+  document.getElementById("diagnostics");
 
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
+const xVal =
+  document.getElementById("xVal");
 
-h1 {
-  margin: 0;
+const yVal =
+  document.getElementById("yVal");
 
-  font-size: 30px;
-  line-height: 1;
+const signedYVal =
+  document.getElementById("signedYVal");
 
-  font-weight: 800;
-}
+const sampleVal =
+  document.getElementById("sampleVal");
 
-h1 span {
-  color: var(--blue);
-}
+const sensorVal =
+  document.getElementById("sensorVal");
 
-.subtitle {
-  margin-top: 6px;
+const audioStateVal =
+  document.getElementById("audioStateVal");
 
-  color: var(--dim);
+const infoBtn =
+  document.getElementById("infoBtn");
 
-  font-size: 12px;
-  font-weight: 700;
+const infoClose =
+  document.getElementById("infoClose");
 
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.info-btn {
-  width: 48px;
-  height: 48px;
-
-  padding: 0;
-
-  border: 2px solid var(--border);
-  border-radius: 50%;
-
-  background: var(--panel);
-  color: var(--text);
-
-  font-size: 22px;
-  font-weight: 700;
-}
+const infoSheet =
+  document.getElementById("infoSheet");
 
 
-/* TARGET */
+/* =========================================================
+   MOTION STATE
+   ========================================================= */
 
-.target-area {
-  flex: 1 1 auto;
-  min-height: 330px;
+let sensorActive = false;
 
-  display: flex;
-}
+let gestureActive = false;
+
+let targetAcquired = false;
+
+let activePointerId = null;
+
+let sampleCount = 0;
+
+let xEnergy = 0;
+
+let positiveYEnergy = 0;
+
+let negativeYEnergy = 0;
+
+let detectedForwardSign = 0;
 
 
 /*
-  IMPORTANT:
-  Android / Chrome must not interpret the target
-  instrument as selectable webpage text.
+  We do NOT permanently assume whether Samsung reports
+  a physical push toward the TOP of the phone as
+  positive Y or negative Y.
+
+  During the first strong deliberate gesture we learn
+  which Y sign dominates.
+
+  Once learned, that sign remains the forward sign
+  until Reset Target.
 */
 
-.arrow-btn,
-.arrow-btn *,
-.arrow,
-.arrow-label,
-.arrow-status {
 
-  -webkit-user-select: none !important;
-  user-select: none !important;
+const MIN_ACCELERATION =
+  0.45;
 
-  -webkit-touch-callout: none !important;
+const MIN_SAMPLES =
+  5;
 
-  -webkit-user-drag: none !important;
+const AXIS_RATIO =
+  1.6;
 
-  touch-action: none !important;
-
-  cursor: default;
-}
+const SIGN_RATIO =
+  1.35;
 
 
-.arrow-btn {
-  width: 100%;
+/* =========================================================
+   AUDIO STATE
+   ========================================================= */
 
-  padding: 18px;
+let audioCtx = null;
 
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+let micStream = null;
 
-  border: 2px solid var(--blue);
-  border-radius: 26px;
+let micSource = null;
 
-  background:
-    radial-gradient(
-      circle at center,
-      #172b48 0%,
-      var(--panel) 68%
+let filterNode = null;
+
+let inverterNode = null;
+
+let limiterNode = null;
+
+let audioRunning = false;
+
+
+/* =========================================================
+   KILL BROWSER SELECTION / CONTEXT MENU
+   ========================================================= */
+
+arrowBtn.addEventListener(
+  "contextmenu",
+  event => {
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    return false;
+  }
+);
+
+
+arrowBtn.addEventListener(
+  "selectstart",
+  event => {
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    return false;
+  }
+);
+
+
+arrowBtn.addEventListener(
+  "dragstart",
+  event => {
+
+    event.preventDefault();
+
+    return false;
+  }
+);
+
+
+/* =========================================================
+   MOTION PERMISSION
+   ========================================================= */
+
+async function enableMotionSensors() {
+
+  if (sensorActive) {
+    return true;
+  }
+
+  try {
+
+    if (
+      typeof DeviceMotionEvent === "undefined"
+    ) {
+
+      sensorVal.textContent =
+        "unavailable";
+
+      return false;
+    }
+
+
+    if (
+      typeof DeviceMotionEvent.requestPermission ===
+      "function"
+    ) {
+
+      const permission =
+        await DeviceMotionEvent.requestPermission();
+
+      if (permission !== "granted") {
+
+        sensorVal.textContent =
+          "denied";
+
+        return false;
+      }
+    }
+
+
+    window.addEventListener(
+      "devicemotion",
+      handleMotion,
+      { passive: true }
     );
 
-  color: var(--text);
 
-  overflow: hidden;
+    sensorActive = true;
+
+    sensorVal.textContent =
+      "ready";
+
+    return true;
+
+  } catch (error) {
+
+    console.error(
+      "Motion error:",
+      error
+    );
+
+    sensorVal.textContent =
+      "error";
+
+    return false;
+  }
 }
 
 
-.arrow-btn.armed {
-  border-color: var(--green);
-  background: #11233a;
-}
+/* =========================================================
+   POINTER DOWN
+   ========================================================= */
 
+arrowBtn.addEventListener(
+  "pointerdown",
+  async event => {
 
-.arrow-btn.acquired {
-  border-color: var(--green);
-  background: #10271f;
-}
+    event.preventDefault();
+    event.stopPropagation();
 
 
-.arrow {
-  display: block;
+    if (targetAcquired) {
+      return;
+    }
 
-  color: var(--blue);
 
-  font-size: clamp(160px, 45vw, 260px);
-  line-height: 0.78;
+    const ready =
+      await enableMotionSensors();
 
-  pointer-events: none;
-}
 
+    if (!ready) {
 
-.arrow-btn.armed .arrow,
-.arrow-btn.acquired .arrow {
-  color: var(--green);
-}
+      arrowStatus.textContent =
+        "MOTION SENSOR ERROR";
 
+      return;
+    }
 
-.arrow-label {
-  margin-top: 22px;
 
-  font-size: 23px;
-  line-height: 1.1;
+    activePointerId =
+      event.pointerId;
 
-  font-weight: 850;
 
-  pointer-events: none;
-}
+    /*
+      Once finger touches the instrument,
+      QZ owns this pointer until release.
+    */
 
+    try {
 
-.arrow-status {
-  margin-top: 10px;
+      arrowBtn.setPointerCapture(
+        activePointerId
+      );
 
-  color: var(--dim);
+    } catch (error) {
 
-  font-size: 17px;
-  font-weight: 700;
+      console.log(
+        "Pointer capture unavailable"
+      );
+    }
 
-  pointer-events: none;
-}
 
+    resetGestureMeasurements();
 
-.arrow-btn.acquired .arrow-status {
-  color: var(--green);
 
-  font-size: 23px;
-  font-weight: 900;
-}
+    gestureActive =
+      true;
 
 
-/* TARGET READOUT */
+    arrowBtn.classList.add(
+      "armed"
+    );
 
-.readout {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
 
-  gap: 8px;
+    arrowStatus.textContent =
+      "HOLD + PUSH PHONE ↑";
 
-  padding: 12px 6px;
 
-  background: var(--panel);
+    targetVal.textContent =
+      "LISTEN";
 
-  border: 1px solid var(--border);
-  border-radius: 18px;
-}
 
+    directionVal.textContent =
+      "↑";
 
-.stat {
-  display: flex;
-  flex-direction: column;
 
-  align-items: center;
+    confidenceVal.textContent =
+      "0%";
 
-  gap: 7px;
+  }
+);
 
-  text-align: center;
-}
 
+/* =========================================================
+   POINTER RELEASE
+   ========================================================= */
 
-.stat .value {
-  font-size: 21px;
-  font-weight: 800;
+function releasePointer(event) {
 
-  font-variant-numeric: tabular-nums;
-}
+  event.preventDefault();
+  event.stopPropagation();
 
 
-.stat .label {
-  color: var(--dim);
+  if (
+    activePointerId !== null
+  ) {
 
-  font-size: 10px;
-  font-weight: 700;
+    try {
 
-  text-transform: uppercase;
-}
+      if (
+        arrowBtn.hasPointerCapture(
+          activePointerId
+        )
+      ) {
 
+        arrowBtn.releasePointerCapture(
+          activePointerId
+        );
+      }
 
-/* AUDIO */
+    } catch (error) {
 
-.audio-btn {
-  width: 100%;
-  min-height: 62px;
+      // Nothing required.
+    }
 
-  border: 2px solid var(--green);
-  border-radius: 18px;
-
-  background: var(--panel);
-  color: var(--green);
-
-  font-size: 20px;
-  font-weight: 850;
-}
-
-
-.audio-btn:disabled {
-  opacity: 0.35;
-}
-
-
-.audio-btn.active {
-  background: #10271f;
-}
-
-
-.audio-status {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-
-  gap: 8px;
-}
-
-
-.audio-status div {
-  padding: 10px;
-
-  display: flex;
-  justify-content: space-between;
-
-  background: var(--panel);
-
-  border: 1px solid var(--border);
-  border-radius: 14px;
-}
-
-
-.audio-status span {
-  color: var(--dim);
-
-  font-size: 11px;
-  font-weight: 700;
-}
-
-
-.audio-status strong {
-  font-size: 14px;
-}
-
-
-/* LEVEL */
-
-.control-panel {
-  padding: 12px 14px;
-
-  display: grid;
-  grid-template-columns: 1fr auto;
-
-  gap: 8px;
-
-  background: var(--panel);
-
-  border: 1px solid var(--border);
-  border-radius: 16px;
-}
-
-
-.control-panel label {
-  grid-column: 1 / -1;
-
-  color: var(--dim);
-
-  font-size: 13px;
-  font-weight: 700;
-}
-
-
-.control-panel input {
-  width: 100%;
-}
-
-
-/* BUTTONS */
-
-.controls {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-
-  gap: 8px;
-}
-
-
-.control-btn {
-  min-height: 48px;
-
-  border: 1px solid var(--border);
-  border-radius: 14px;
-
-  background: var(--panel);
-  color: var(--text);
-
-  font-size: 14px;
-  font-weight: 750;
-}
-
-
-/* DIAGNOSTICS */
-
-.diagnostics {
-  display: none;
-
-  grid-template-columns: repeat(3, 1fr);
-
-  gap: 8px;
-
-  padding: 12px;
-
-  background: #0b1424;
-
-  border: 1px solid var(--border);
-  border-radius: 16px;
-}
-
-
-.diagnostics.open {
-  display: grid;
-}
-
-
-.diagnostics div {
-  display: flex;
-  flex-direction: column;
-
-  gap: 3px;
-
-  text-align: center;
-}
-
-
-.diagnostics span {
-  color: var(--dim);
-
-  font-size: 9px;
-  font-weight: 700;
-
-  text-transform: uppercase;
-}
-
-
-.diagnostics strong {
-  font-size: 13px;
-
-  font-variant-numeric: tabular-nums;
-}
-
-
-/* INFO */
-
-.sheet {
-  position: fixed;
-
-  inset: 0;
-
-  z-index: 1000;
-
-  display: none;
-  align-items: flex-end;
-
-  background: rgba(0, 0, 0, 0.72);
-}
-
-
-.sheet.open {
-  display: flex;
-}
-
-
-.sheet-inner {
-  position: relative;
-
-  width: 100%;
-
-  padding:
-    24px
-    22px
-    calc(30px + env(safe-area-inset-bottom));
-
-  background: var(--panel);
-
-  border-radius: 24px 24px 0 0;
-}
-
-
-.sheet-inner h2 {
-  margin: 0 50px 16px 0;
-}
-
-
-.sheet-inner p {
-  margin: 0;
-
-  color: var(--dim);
-
-  font-size: 16px;
-  line-height: 1.5;
-
-  white-space: pre-line;
-}
-
-
-.sheet-close {
-  position: absolute;
-
-  top: 16px;
-  right: 16px;
-
-  width: 44px;
-  height: 44px;
-
-  border: 1px solid var(--border);
-  border-radius: 50%;
-
-  background: #0b1424;
-  color: var(--text);
-}
-
-
-@media (min-width: 600px) {
-
-  body {
-    display: flex;
-    justify-content: center;
   }
 
-  .panel {
-    max-width: 520px;
+
+  activePointerId =
+    null;
+
+
+  if (targetAcquired) {
+
+    gestureActive =
+      false;
+
+    return;
   }
 
+
+  if (gestureActive) {
+
+    gestureActive =
+      false;
+
+
+    arrowBtn.classList.remove(
+      "armed"
+    );
+
+
+    targetVal.textContent =
+      "NO";
+
+
+    directionVal.textContent =
+      "—";
+
+
+    arrowStatus.textContent =
+      "NOT ENOUGH — TRY AGAIN";
+
+  }
 }
+
+
+arrowBtn.addEventListener(
+  "pointerup",
+  releasePointer
+);
+
+
+arrowBtn.addEventListener(
+  "pointercancel",
+  releasePointer
+);
+
+
+/* =========================================================
+   MOTION
+   ========================================================= */
+
+function handleMotion(event) {
+
+  /*
+    Prefer acceleration WITHOUT gravity.
+
+    Gravity contamination makes directional movement
+    harder to interpret.
+  */
+
+  let acceleration =
+    event.acceleration;
+
+
+  if (!acceleration) {
+
+    acceleration =
+      event.accelerationIncludingGravity;
+  }
+
+
+  if (!acceleration) {
+    return;
+  }
+
+
+  const x =
+    Number(acceleration.x) || 0;
+
+  const y =
+    Number(acceleration.y) || 0;
+
+
+  xVal.textContent =
+    x.toFixed(2);
+
+  yVal.textContent =
+    y.toFixed(2);
+
+  signedYVal.textContent =
+    y.toFixed(2);
+
+
+  if (
+    !gestureActive ||
+    targetAcquired
+  ) {
+
+    return;
+  }
+
+
+  const absX =
+    Math.abs(x);
+
+  const absY =
+    Math.abs(y);
+
+
+  const horizontalMagnitude =
+    Math.sqrt(
+      x * x +
+      y * y
+    );
+
+
+  if (
+    horizontalMagnitude <
+    MIN_ACCELERATION
+  ) {
+
+    return;
+  }
+
+
+  sampleCount++;
+
+  sampleVal.textContent =
+    String(sampleCount);
+
+
+  xEnergy +=
+    absX;
+
+
+  if (y > 0) {
+
+    positiveYEnergy +=
+      y;
+
+  } else {
+
+    negativeYEnergy +=
+      Math.abs(y);
+  }
+
+
+  evaluateGesture();
+}
+
+
+/* =========================================================
+   GESTURE EVALUATION
+   ========================================================= */
+
+function evaluateGesture() {
+
+  const yTotal =
+    positiveYEnergy +
+    negativeYEnergy;
+
+
+  const total =
+    yTotal +
+    xEnergy;
+
+
+  if (total <= 0) {
+    return;
+  }
+
+
+  /*
+    First requirement:
+
+    Movement must strongly favor the phone's
+    top/bottom axis instead of sideways movement.
+  */
+
+  const axisConfidence =
+    yTotal /
+    total;
+
+
+  confidenceVal.textContent =
+    Math.round(
+      axisConfidence * 100
+    ) + "%";
+
+
+  const axisDominant =
+    yTotal >
+    xEnergy *
+    AXIS_RATIO;
+
+
+  if (!axisDominant) {
+    return;
+  }
+
+
+  if (
+    sampleCount <
+    MIN_SAMPLES
+  ) {
+
+    return;
+  }
+
+
+  /*
+    Second requirement:
+
+    One SIGN of Y must dominate.
+
+    This rejects a back-and-forth wiggle.
+  */
+
+  const positiveDominant =
+    positiveYEnergy >
+    negativeYEnergy *
+    SIGN_RATIO;
+
+
+  const negativeDominant =
+    negativeYEnergy >
+    positiveYEnergy *
+    SIGN_RATIO;
+
+
+  if (
+    !positiveDominant &&
+    !negativeDominant
+  ) {
+
+    return;
+  }
+
+
+  /*
+    Learn the physical forward sign from the user's
+    deliberate ↑ gesture.
+
+    We are explicitly calibrating this phone instead
+    of pretending every browser/device reports the
+    same sign.
+  */
+
+  if (
+    detectedForwardSign === 0
+  ) {
+
+    detectedForwardSign =
+      positiveDominant
+        ? 1
+        : -1;
+  }
+
+
+  const currentSign =
+    positiveDominant
+      ? 1
+      : -1;
+
+
+  if (
+    currentSign !==
+    detectedForwardSign
+  ) {
+
+    arrowStatus.textContent =
+      "WRONG DIRECTION";
+
+    return;
+  }
+
+
+  acquireTarget();
+}
+
+
+/* =========================================================
+   GOT IT
+   ========================================================= */
+
+function acquireTarget() {
+
+  targetAcquired =
+    true;
+
+  gestureActive =
+    false;
+
+
+  arrowBtn.classList.remove(
+    "armed"
+  );
+
+
+  arrowBtn.classList.add(
+    "acquired"
+  );
+
+
+  targetVal.textContent =
+    "YES";
+
+
+  directionVal.textContent =
+    "↑";
+
+
+  arrowStatus.textContent =
+    "GOT IT";
+
+
+  audioBtn.disabled =
+    false;
+
+
+  if ("vibrate" in navigator) {
+
+    navigator.vibrate(
+      [90, 50, 160]
+    );
+  }
+}
+
+
+/* =========================================================
+   AUDIO BUTTON
+   ========================================================= */
+
+audioBtn.addEventListener(
+  "click",
+  async () => {
+
+    if (!targetAcquired) {
+      return;
+    }
+
+
+    if (!audioRunning) {
+
+      await startAudio();
+
+    } else {
+
+      stopAudio();
+    }
+
+  }
+);
+
+
+/* =========================================================
+   START AUDIO
+   ========================================================= */
+
+async function startAudio() {
+
+  try {
+
+    micStream =
+      await navigator.mediaDevices.getUserMedia({
+
+        audio: {
+
+          echoCancellation: false,
+
+          noiseSuppression: false,
+
+          autoGainControl: false
+
+        }
+
+      });
+
+
+    audioCtx =
+      new (
+        window.AudioContext ||
+        window.webkitAudioContext
+      )();
+
+
+    if (
+      audioCtx.state === "suspended"
+    ) {
+
+      await audioCtx.resume();
+    }
+
+
+    micSource =
+      audioCtx.createMediaStreamSource(
+        micStream
+      );
+
+
+    /*
+      Initial experiment concentrates on the lower
+      part of the spectrum where wavelength and
+      timing give us a better chance.
+    */
+
+    filterNode =
+      audioCtx.createBiquadFilter();
+
+
+    filterNode.type =
+      "lowpass";
+
+
+    filterNode.frequency.value =
+      500;
+
+
+    filterNode.Q.value =
+      0.7;
+
+
+    /*
+      Negative gain = polarity inversion.
+
+      This does NOT guarantee cancellation at the ear.
+      It simply creates the experimental opposing
+      signal for this stage.
+    */
+
+    inverterNode =
+      audioCtx.createGain();
+
+
+    inverterNode.gain.value =
+      -Number(
+        gainSlider.value
+      );
+
+
+    /*
+      Keep experimental output under control.
+    */
+
+    limiterNode =
+      audioCtx.createDynamicsCompressor();
+
+
+    limiterNode.threshold.value =
+      -20;
+
+
+    limiterNode.knee.value =
+      10;
+
+
+    limiterNode.ratio.value =
+      12;
+
+
+    limiterNode.attack.value =
+      0.003;
+
+
+    limiterNode.release.value =
+      0.20;
+
+
+    micSource
+      .connect(filterNode);
+
+
+    filterNode
+      .connect(inverterNode);
+
+
+    inverterNode
+      .connect(limiterNode);
+
+
+    limiterNode
+      .connect(
+        audioCtx.destination
+      );
+
+
+    audioRunning =
+      true;
+
+
+    micVal.textContent =
+      "LIVE";
+
+
+    qzVal.textContent =
+      "ON";
+
+
+    audioStateVal.textContent =
+      "running";
+
+
+    audioBtn.textContent =
+      "STOP QZ AUDIO";
+
+
+    audioBtn.classList.add(
+      "active"
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      "QZ audio error:",
+      error
+    );
+
+
+    micVal.textContent =
+      "ERROR";
+
+
+    qzVal.textContent =
+      "OFF";
+
+
+    audioStateVal.textContent =
+      "error";
+
+
+    alert(
+      "QZ could not start the microphone. Check microphone permission."
+    );
+  }
+}
+
+
+/* =========================================================
+   STOP AUDIO
+   ========================================================= */
+
+function stopAudio() {
+
+  if (micStream) {
+
+    micStream
+      .getTracks()
+      .forEach(
+        track => track.stop()
+      );
+  }
+
+
+  if (audioCtx) {
+
+    audioCtx.close();
+  }
+
+
+  audioCtx =
+    null;
+
+  micStream =
+    null;
+
+  micSource =
+    null;
+
+  filterNode =
+    null;
+
+  inverterNode =
+    null;
+
+  limiterNode =
+    null;
+
+  audioRunning =
+    false;
+
+
+  micVal.textContent =
+    "OFF";
+
+
+  qzVal.textContent =
+    "OFF";
+
+
+  audioStateVal.textContent =
+    "stopped";
+
+
+  audioBtn.textContent =
+    "START QZ AUDIO";
+
+
+  audioBtn.classList.remove(
+    "active"
+  );
+}
+
+
+/* =========================================================
+   OUTPUT LEVEL
+   ========================================================= */
+
+gainSlider.addEventListener(
+  "input",
+  () => {
+
+    const level =
+      Number(
+        gainSlider.value
+      );
+
+
+    gainVal.textContent =
+      Math.round(
+        level * 100
+      ) + "%";
+
+
+    if (
+      inverterNode &&
+      audioCtx
+    ) {
+
+      inverterNode.gain
+        .setTargetAtTime(
+          -level,
+          audioCtx.currentTime,
+          0.02
+        );
+    }
+
+  }
+);
+
+
+/* =========================================================
+   RESET
+   ========================================================= */
+
+resetBtn.addEventListener(
+  "click",
+  () => {
+
+    /*
+      Stop audio first so Reset truly returns
+      QZ to a known condition.
+    */
+
+    if (audioRunning) {
+
+      stopAudio();
+    }
+
+
+    targetAcquired =
+      false;
+
+
+    gestureActive =
+      false;
+
+
+    activePointerId =
+      null;
+
+
+    /*
+      Resetting this also recalibrates which signed
+      Y direction represents ↑ on this device.
+    */
+
+    detectedForwardSign =
+      0;
+
+
+    resetGestureMeasurements();
+
+
+    arrowBtn.classList.remove(
+      "armed",
+      "acquired"
+    );
+
+
+    arrowStatus.textContent =
+      "TOUCH + HOLD";
+
+
+    targetVal.textContent =
+      "NO";
+
+
+    directionVal.textContent =
+      "—";
+
+
+    confidenceVal.textContent =
+      "0%";
+
+
+    audioBtn.disabled =
+      true;
+  }
+);
+
+
+function resetGestureMeasurements() {
+
+  sampleCount =
+    0;
+
+  xEnergy =
+    0;
+
+  positiveYEnergy =
+    0;
+
+  negativeYEnergy =
+    0;
+
+
+  sampleVal.textContent =
+    "0";
+}
+
+
+/* =========================================================
+   DIAGNOSTICS
+   ========================================================= */
+
+diagnosticsBtn.addEventListener(
+  "click",
+  () => {
+
+    diagnostics.classList.toggle(
+      "open"
+    );
+  }
+);
+
+
+/* =========================================================
+   INFO
+   ========================================================= */
+
+infoBtn.addEventListener(
+  "click",
+  () => {
+
+    infoSheet.classList.add(
+      "open"
+    );
+  }
+);
+
+
+infoClose.addEventListener(
+  "click",
+  () => {
+
+    infoSheet.classList.remove(
+      "open"
+    );
+  }
+);
+
+
+infoSheet.addEventListener(
+  "click",
+  event => {
+
+    if (
+      event.target ===
+      infoSheet
+    ) {
+
+      infoSheet.classList.remove(
+        "open"
+      );
+    }
+  }
+);
+
+
+/* =========================================================
+   INITIAL CHECK
+   ========================================================= */
+
+window.addEventListener(
+  "load",
+  () => {
+
+    if (
+      typeof DeviceMotionEvent ===
+      "undefined"
+    ) {
+
+      sensorVal.textContent =
+        "unavailable";
+
+    } else {
+
+      sensorVal.textContent =
+        "available";
+    }
+  }
+);
