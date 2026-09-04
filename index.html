@@ -30,21 +30,23 @@
         class="info-btn"
         id="infoBtn"
         type="button"
-        aria-label="How this works"
       >
         i
       </button>
     </header>
 
 
-    <!-- DIRECTION TARGET -->
+    <!-- TARGET INSTRUMENT -->
+
     <section class="target-area">
 
       <button
         class="arrow-btn"
         id="arrowBtn"
         type="button"
+        aria-label="Hold and push phone toward unwanted noise"
       >
+
         <span class="arrow">↑</span>
 
         <span class="arrow-label">
@@ -55,27 +57,20 @@
           class="arrow-status"
           id="arrowStatus"
         >
-          Touch arrow to target
+          TOUCH + HOLD
         </span>
+
       </button>
 
     </section>
 
 
-    <!-- AUDIO ENGINE -->
-    <button
-      class="audio-btn"
-      id="audioBtn"
-      type="button"
-    >
-      Start QZ Audio
-    </button>
+    <!-- TARGET STATUS -->
 
-
-    <!-- LIVE STATUS -->
     <section class="readout">
 
       <div class="stat">
+
         <span
           class="value"
           id="targetVal"
@@ -86,91 +81,105 @@
         <span class="label">
           Target
         </span>
+
       </div>
 
+
       <div class="stat">
+
         <span
           class="value"
-          id="micVal"
+          id="directionVal"
         >
-          OFF
+          —
         </span>
 
         <span class="label">
-          Microphone
+          Direction
         </span>
+
       </div>
 
+
       <div class="stat">
+
         <span
           class="value"
-          id="qzVal"
+          id="confidenceVal"
         >
-          OFF
+          0%
         </span>
 
         <span class="label">
-          QZ Audio
+          Confidence
         </span>
+
       </div>
 
     </section>
 
 
-    <!-- QZ LEVEL -->
+    <!-- AUDIO A/B CONTROL -->
+
+    <button
+      class="audio-btn"
+      id="audioBtn"
+      type="button"
+      disabled
+    >
+      START QZ AUDIO
+    </button>
+
+
+    <section class="audio-status">
+
+      <div>
+        <span>MIC</span>
+        <strong id="micVal">OFF</strong>
+      </div>
+
+      <div>
+        <span>QZ OUTPUT</span>
+        <strong id="qzVal">OFF</strong>
+      </div>
+
+    </section>
+
+
+    <!-- OUTPUT LEVEL -->
+
     <section class="control-panel">
 
       <label for="gainSlider">
-        QZ output strength
+        QZ Output Strength
       </label>
 
       <input
         id="gainSlider"
         type="range"
         min="0"
-        max="0.50"
+        max="0.30"
         step="0.01"
-        value="0.10"
+        value="0.05"
       >
 
       <strong id="gainVal">
-        10%
+        5%
       </strong>
 
     </section>
 
 
-    <!-- DELAY -->
-    <section class="control-panel">
-
-      <label for="delaySlider">
-        Timing adjustment
-      </label>
-
-      <input
-        id="delaySlider"
-        type="range"
-        min="0"
-        max="0.50"
-        step="0.002"
-        value="0"
-      >
-
-      <strong id="delayVal">
-        0 ms
-      </strong>
-
-    </section>
-
+    <!-- CONTROLS -->
 
     <div class="controls">
 
       <button
         class="control-btn"
-        id="tareBtn"
+        id="resetBtn"
         type="button"
       >
-        Reset Target
+        RESET TARGET
       </button>
 
       <button
@@ -178,13 +187,14 @@
         id="diagnosticsBtn"
         type="button"
       >
-        Diagnostics
+        DIAGNOSTICS
       </button>
 
     </div>
 
 
     <!-- DIAGNOSTICS -->
+
     <section
       class="diagnostics"
       id="diagnostics"
@@ -201,13 +211,18 @@
       </div>
 
       <div>
-        <span>Peak</span>
-        <strong id="peakVal">0.00</strong>
+        <span>Signed Y</span>
+        <strong id="signedYVal">0.00</strong>
+      </div>
+
+      <div>
+        <span>Samples</span>
+        <strong id="sampleVal">0</strong>
       </div>
 
       <div>
         <span>Sensor</span>
-        <strong id="sensorVal">checking…</strong>
+        <strong id="sensorVal">checking</strong>
       </div>
 
       <div>
@@ -215,17 +230,13 @@
         <strong id="audioStateVal">idle</strong>
       </div>
 
-      <div>
-        <span>Sample Rate</span>
-        <strong id="sampleRateVal">—</strong>
-      </div>
-
     </section>
 
   </main>
 
 
-  <!-- INFO SHEET -->
+  <!-- INFORMATION -->
+
   <div
     class="sheet"
     id="infoSheet"
@@ -242,28 +253,23 @@
       </button>
 
       <h2>
-        QZ Audio Test
+        QZ Target Test
       </h2>
 
       <p>
-        Point the top edge of the phone toward the
-        unwanted sound.
+Point the TOP of the phone toward the unwanted noise.
 
-        Push the phone toward that sound until QZ
-        displays GOT IT.
+Touch and HOLD the arrow.
 
-        Start QZ Audio to activate the phone microphone
-        and send an inverted audio signal to the connected
-        headphones or earbuds.
+While holding it, physically slide the entire phone toward the arrow.
 
-        This is an experimental signal-path test.
+Do not drag the arrow on the screen.
 
-        Bluetooth latency may prevent true phase
-        cancellation. The timing and output controls are
-        included so we can determine what the hardware
-        actually allows.
+When QZ has enough directional information, the phone vibrates and displays GOT IT.
 
-        Start with a low QZ output level.
+After GOT IT, use START QZ AUDIO to begin the audio experiment.
+
+QZ Audio can then be switched ON and OFF without changing the target.
       </p>
 
     </div>
